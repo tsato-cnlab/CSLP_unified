@@ -1,0 +1,11 @@
+2025-06-03 23:14:01,057 - INFO - ログ記録を開始しました: C:\Users\echiz\00_研究コード\eMATES解析_GA\emates\src\util\logs\simulation_20250603_231401.log
+2025-06-03 23:14:01,057 - INFO - 結果収集と評価を開始
+2025-06-03 23:14:17,038 - INFO - Worker 1 処理完了
+2025-06-03 23:14:33,676 - INFO - Worker 2 処理完了
+2025-06-03 23:14:49,177 - INFO - Worker 3 処理完了
+2025-06-03 23:15:03,725 - INFO - Worker 4 処理完了
+2025-06-03 23:15:03,725 - INFO - Worker 5 が見つからないため処理終了
+2025-06-03 23:15:03,725 - INFO - 総計 4 ワーカーの結果を処理
+2025-06-03 23:15:03,725 - INFO - 結果を保存中...
+2025-06-03 23:15:03,725 - INFO - 保存先: C:\Users\echiz\00_研究コード\eMATES解析_GA\emates\results\results
+2025-06-03 23:15:03,939 - INFO - 結果保存完了: C:\Users\echiz\00_研究コード\eMATES解析_GA\emates\results\results

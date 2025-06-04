@@ -1,0 +1,3 @@
+2025-05-23 00:28:59,906 - INFO - ログ記録を開始しました: C:\Users\echiz\00_研究コード\eMATES解析_GA\emates\src\util\logs\simulation_20250523_002859.log
+2025-05-23 00:28:59,907 - INFO - 実行パラメータ: 並列数=4, 設定=emates/data/solution.json
+2025-05-23 00:28:59,907 - ERROR - エラー: 設定は整数のカンマ区切りリストである必要があります

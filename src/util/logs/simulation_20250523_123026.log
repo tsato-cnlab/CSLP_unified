@@ -1,0 +1,46 @@
+2025-05-23 12:30:26,530 - INFO - ログ記録を開始しました: C:\Users\echiz\00_研究コード\eMATES解析_GA\emates\src\util\logs\simulation_20250523_123026.log
+2025-05-23 12:30:26,530 - INFO - 実行パラメータ: 並列数=4, 設定=data/solution.json
+2025-05-23 12:30:26,546 - INFO - 充電ステーション設定: [[0, 0, 2, 0, 2, 1, 0, 0, 2], [0, 0, 4, 0, 1, 3, 0, 2, 0], [0, 0, 2, 0, 2, 0, 0, 2, 1], [0, 0, 0, 0, 0, 1, 0, 0, 2]]
+2025-05-23 12:30:26,546 - INFO - 総設定数: 4の評価を開始
+2025-05-23 12:30:26,546 - INFO - 並列シミュレーション開始: 4プロセス
+2025-05-23 12:30:26,546 - INFO - Worker 1のディレクトリは既に存在: \\wsl.localhost\ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\coupled_network_shikata_1
+2025-05-23 12:30:26,546 - INFO - Worker 2のディレクトリは既に存在: \\wsl.localhost\ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\coupled_network_shikata_2
+2025-05-23 12:30:26,546 - INFO - Worker 3のディレクトリは既に存在: \\wsl.localhost\ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\coupled_network_shikata_3
+2025-05-23 12:30:26,552 - INFO - Worker 4のディレクトリは既に存在: \\wsl.localhost\ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\coupled_network_shikata_4
+2025-05-23 12:30:26,552 - INFO - 並列環境の準備が完了しました
+2025-05-23 12:30:26,555 - INFO - ワーカー 1 の処理開始
+2025-05-23 12:30:26,555 - INFO - ワーカー 2 の処理開始
+2025-05-23 12:30:26,556 - INFO - ワーカー 3 の処理開始
+2025-05-23 12:30:26,556 - INFO - ワーカー 4 の処理開始
+2025-05-23 12:30:34,288 - ERROR - ワーカー 2 のシミュレーション失敗 (所要時間: 7.7秒)
+2025-05-23 12:30:34,288 - ERROR - エラー内容: invalid format of global variable: 陦後≧
+format is <symbol = value>
+detector unit 000004: invalid input - distance 10 of section 000457005005
+
+2025-05-23 12:30:34,289 - INFO - ワーカー 2 の処理完了 (所要時間: 7.7秒)
+2025-05-23 12:30:34,289 - WARNING - ワーカー 2 でエラー発生
+2025-05-23 12:30:35,036 - ERROR - ワーカー 1 のシミュレーション失敗 (所要時間: 8.5秒)
+2025-05-23 12:30:35,036 - ERROR - エラー内容: invalid format of global variable: 陦後≧
+format is <symbol = value>
+detector unit 000004: invalid input - distance 10 of section 000457005005
+
+2025-05-23 12:30:35,036 - INFO - ワーカー 1 の処理完了 (所要時間: 8.5秒)
+2025-05-23 12:30:35,036 - WARNING - ワーカー 1 でエラー発生
+2025-05-23 12:30:35,538 - ERROR - ワーカー 3 のシミュレーション失敗 (所要時間: 9.0秒)
+2025-05-23 12:30:35,538 - ERROR - エラー内容: invalid format of global variable: 陦後≧
+format is <symbol = value>
+detector unit 000004: invalid input - distance 10 of section 000457005005
+
+2025-05-23 12:30:35,538 - INFO - ワーカー 3 の処理完了 (所要時間: 9.0秒)
+2025-05-23 12:30:35,538 - WARNING - ワーカー 3 でエラー発生
+2025-05-23 12:30:35,862 - ERROR - ワーカー 4 のシミュレーション失敗 (所要時間: 9.3秒)
+2025-05-23 12:30:35,862 - ERROR - エラー内容: invalid format of global variable: 陦後≧
+format is <symbol = value>
+detector unit 000004: invalid input - distance 10 of section 000457005005
+
+2025-05-23 12:30:35,862 - INFO - ワーカー 4 の処理完了 (所要時間: 9.3秒)
+2025-05-23 12:30:35,862 - WARNING - ワーカー 4 でエラー発生
+2025-05-23 12:30:35,862 - INFO - すべてのスレッドが終了しました
+2025-05-23 12:30:35,862 - ERROR - 一部のシミュレーションでエラーが発生しました (総所要時間: 9.3秒)
+2025-05-23 12:30:35,862 - INFO - 評価が完了
+2025-05-23 12:30:35,862 - INFO - プログラム終了 (ステータス: 1)
