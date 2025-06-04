@@ -286,8 +286,9 @@ class EMATESPipeline:
                 return pd.DataFrame()
             
             df = pd.read_csv(
-                vehicle_trip_path, sep=r',',usecols=[0, 2, 3, 11, 14],
-                names=['EVID','StartTime', 'EndTime', 'CSID', 'InitialSOC']
+                vehicle_trip_path, sep=r',',usecols=[0, 2, 3, 4, 5, 8,9,10,11, 14],
+                names=['EVID','StartTime', 'EndTime', 'WaitingEntryTime','startChargingTime',
+                       'startID','goalID','tripLength','CSID', 'InitialSOC']
             )
             df.fillna({'CSID':9999}, inplace=True)  # CSIDがNaNの場合は9999で埋める
             
