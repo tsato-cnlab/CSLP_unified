@@ -30,6 +30,7 @@ from src.util.log_manager import setup_logging
 from src.simulation.run_emates import run_parallel_emates_simulations
 from src.util.path_manager import get_paths
 
+
 class EMATESPipeline:
     """eMATESシミュレーションの統合パイプライン - データ整理特化版"""
     
@@ -260,10 +261,7 @@ class EMATESPipeline:
             
             df = pd.read_csv(
                 charging_loss_path, sep=',',header=None,
-                names=['Time', 'EVID', 'CSID', 'WaitingNum', 'NumPorts', 'SOC'],
-                dtype = {'Time': 'int64','EVID': 'int64','CSID': 'int64',
-                    'WaitingNum': 'int64','NumPorts': 'int64',
-                    'SOC': 'float64'}
+                names=['Time', 'EVID', 'CSID', 'WaitingNum', 'NumPorts', 'SOC']
             )
             # 時間をmsから秒に変換
             df['Time_sec'] = df['Time'] / 1000
@@ -288,9 +286,33 @@ class EMATESPipeline:
             df = pd.read_csv(
                 vehicle_trip_path, sep=r',',usecols=[0, 2, 3, 4, 5, 8,9,10,11, 14],
                 names=['EVID','StartTime', 'EndTime', 'WaitingEntryTime','startChargingTime',
-                       'startID','goalID','tripLength','CSID', 'InitialSOC']
+                       'startID','goalID','tripLength','CSID', 'InitialSOC'],
+                dtype=str
             )
-            df.fillna({'CSID':9999}, inplace=True)  # CSIDがNaNの場合は9999で埋める
+                    # 特殊文字の処理
+            def clean_numeric_value(value):
+                """数値変換前の前処理"""
+                if pd.isna(value) or value == '' or value == '******':
+                    return np.nan
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return np.nan
+            
+            # 各列を適切な型に変換
+            numeric_columns = ['EVID', 'StartTime', 'EndTime', 'WaitingEntryTime', 
+                            'startChargingTime', 'startID', 'goalID', 'tripLength', 
+                            'CSID', 'InitialSOC']
+            
+            for col in numeric_columns:
+                if col in df.columns:
+                    df[col] = df[col].apply(clean_numeric_value)
+            # 時間を秒に変換
+            
+            df['StartTime'] = df['StartTime'] / 1000
+            df['EndTime'] = df['EndTime'] / 1000
+            df['WaitingEntryTime'] = df['WaitingEntryTime'] / 1000
+            df['startChargingTime'] = df['startChargingTime'] / 1000
             
             return df
             
