@@ -73,8 +73,7 @@ class ParallelEnvironment:
     def update_cs_list(self):
         """CSリストを更新する公開メソッド"""
         lines = self._read_cs_list_file()
-        filtered_lines = self._filter_comment_lines(lines)
-        updated_lines = self._update_cs_counts(filtered_lines)
+        updated_lines = self._update_cs_counts(lines)
         self._write_cs_list_file(updated_lines)
         
     def _read_cs_list_file(self):
@@ -82,31 +81,30 @@ class ParallelEnvironment:
         with open(self.csList_txtfile, 'r') as file:
             return file.readlines()
         
-    def _filter_comment_lines(self, lines):
-        """コメント行と空行を削除する内部メソッド"""
-        filtered = []
-        for line in lines:
-            line = line.strip()
-            if line and not line.startswith('#'):
-                filtered.append(line)
-        return filtered
         
-    def _update_cs_counts(self, filtered_lines):
+    def _update_cs_counts(self, lines):
         """CS数を設定に基づいて更新する内部メソッド"""
         updated = []
-        for i, line in enumerate(filtered_lines):
-            values = line.split(',')
-            if len(values) >= 3 and i < len(self.cs_config):
-                updated.append(f"{values[0]},{self.cs_config[i]},{values[2]}")
-            else:
-                updated.append(line)
+        # cs_configから設定を取得
+        csids = self.cs_config.get('csids', [])
+        ports = self.cs_config.get('ports', [])
+        cap_kw = self.cs_config.get('cap_kw', [])
+        
+        for i in range(len(csids)):
+            csid = csids[i]
+            port = ports[i]
+            cap = cap_kw[i]
+            
+            # CSIDの行を更新
+            updated.append(f"{csid},{port},{cap}\n")
         return updated
         
     def _write_cs_list_file(self, lines):
         """CSリストファイルに書き込む内部メソッド"""
-        with open(self.csList_txtfile, 'w') as file:
+        csList_file_parallel = os.path.join(self.target_dir, "csList.txt")
+        with open(csList_file_parallel, 'w') as file:
             for line in lines:
-                file.write(f"{line}\n")
+                file.write(line)
             
     def update_shikata_dir(self):
         # 各ワーカー用にディレクトリをコピー
@@ -124,6 +122,7 @@ class ParallelEnvironment:
                 self.update_cs_list()
                 logging.info(f"Worker {i}のディレクトリ作成: {self.target_dir}")
             else:
+                self.update_cs_list()
                 logging.info(f"Worker {i}のディレクトリは既に存在: {self.target_dir}")
 
 
@@ -136,7 +135,41 @@ def prepare_parallel_environment(parallel_count, cs_config):
     env = ParallelEnvironment(parallel_count, cs_config)
     env.update_shikata_dir()
         
+import sys
+import traceback
+
+def main():
+    """メイン処理とエラーハンドリング"""
+    try:
+        print("=== 並列環境セットアップ開始 ===")
+        
+        # パラメータ設定
+        parallel_count = 1
+        cs_config = {
+            "csids": [1, 2, 3],
+            "ports": [1, 2, 3],
+            "cap_kw": [50, 75, 100]
+        }
+        
+        print(f"並列数: {parallel_count}")
+        print(f"設定: {cs_config}")
+        
+        # 環境準備の実行
+        print("環境準備中...")
+        prepare_parallel_environment(parallel_count, cs_config)
+        
+        # 成功確認
+        print("✓ 環境準備が完了しました")
+        print("=== セットアップ正常終了 ===")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ エラーが発生しました: {e}")
+        print("詳細なエラー情報:")
+        traceback.print_exc()
+        return False
+
 if __name__ == "__main__":
-    # テスト用の並列環境を準備
-    prepare_parallel_environment(2, [1, 2, 3, 4])
-    print("create_emates_env.py が呼び出されました")
+    success = main()
+    sys.exit(0 if success else 1)

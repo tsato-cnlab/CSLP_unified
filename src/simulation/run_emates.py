@@ -1,10 +1,14 @@
 import os
+import sys
 import logging
 import subprocess
 import time
 import concurrent.futures
 from tqdm import tqdm
 
+# プロジェクトルートを追加
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_root)
 # 相対インポートではなく、プロジェクトのルートからの絶対インポートに変更
 from src.util.path_manager import get_paths, convert_to_wsl_path
 from src.util.log_manager import setup_logging
@@ -17,15 +21,15 @@ def run_single_emates_simulation(paths, worker_id):
     単一のeMATESシミュレーションを実行する関数
     """
     # シミュレーション時間
-    hour = 24  # シミュレーション時間（時間単位）
-    ts_calc = 3600 * hour * 1000  # 24時間シミュレーション
+    HOUR = 24  # シミュレーション時間（時間単位）
+    TS_CALC = 3600 * HOUR * 1000  # 24時間シミュレーション
     
     # WSLパスに変換
     shikata_wsl = convert_to_wsl_path(paths["shikata"])    
     # 実行コマンド
     wsl_command = f'/home/tsato-cnlab/Emates/eMATES_2308/solver/advmates-calc -e 0 ' \
                   f'-d {shikata_wsl} -s ' \
-                  f'--no-generate-random-vehicle -no-input-signal -r 1 -t {ts_calc}'
+                  f'--no-generate-random-vehicle -no-input-signal -r 1 -t {TS_CALC}'
     
         # 開始時刻を記録
     start_time = time.time()
@@ -77,7 +81,7 @@ def run_single_emates_simulation(paths, worker_id):
         logging.exception(f"ワーカー {worker_id} の実行例外: {e}")
         return 1
 
-def run_parallel_emates_simulations(base_config, parallel_count=4):
+def run_parallel_emates_simulations(base_config, parallel_count=1):
     """
     複数のeMATESシミュレーションを並列に実行する関数
     """
@@ -138,3 +142,24 @@ def run_parallel_emates_simulations(base_config, parallel_count=4):
         overall_status = 1
     
     return overall_status
+
+if __name__ == "__main__":
+    # ログ設定
+    log_file = setup_logging(debug=True)
+    logging.info("eMATESシミュレーションスクリプト開始")
+    
+    # シミュレーションの基本設定
+    base_config = {
+        "csids": [1, 2, 3],
+        "ports": [1, 2, 3],
+        "cap_kw": [50, 75, 100]
+    }
+    
+    # 並列実行数
+    parallel_count = 1
+    
+    # シミュレーション実行
+    result = run_parallel_emates_simulations(base_config, parallel_count)
+    
+    logging.info(f"プログラム終了 (ステータス: {result})")
+    exit(result)

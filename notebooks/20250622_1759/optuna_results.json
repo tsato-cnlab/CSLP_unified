@@ -1,0 +1,424 @@
+{
+  "best_value": -492.1520000000021,
+  "best_params": {
+    "ports_0": 3,
+    "capacity_0": 90,
+    "ports_1": 2,
+    "capacity_1": 100,
+    "ports_2": 0,
+    "ports_3": 0,
+    "ports_4": 0,
+    "ports_5": 1,
+    "capacity_5": 50,
+    "ports_6": 0,
+    "ports_7": 2,
+    "capacity_7": 50
+  },
+  "n_trials": 20,
+  "optimization_time": "20250622_18:00:01",
+  "trials": [
+    {
+      "number": 0,
+      "value": 10351.807999999999,
+      "params": {},
+      "state": "COMPLETE"
+    },
+    {
+      "number": 1,
+      "value": 4782.908091954022,
+      "params": {
+        "ports_0": 1,
+        "capacity_0": 100,
+        "ports_1": 1,
+        "capacity_1": 90,
+        "ports_2": 0,
+        "ports_3": 3,
+        "capacity_3": 50,
+        "ports_4": 1,
+        "capacity_4": 50,
+        "ports_5": 1,
+        "capacity_5": 100,
+        "ports_6": 4,
+        "capacity_6": 90,
+        "ports_7": 0
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 2,
+      "value": Infinity,
+      "params": {
+        "ports_0": 3,
+        "capacity_0": 100,
+        "ports_1": 0,
+        "ports_2": 4,
+        "capacity_2": 90,
+        "ports_3": 4,
+        "capacity_3": 90,
+        "ports_4": 4,
+        "capacity_4": 100,
+        "ports_5": 3,
+        "capacity_5": 100,
+        "ports_6": 0,
+        "ports_7": 4,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 3,
+      "value": 6574.306285714285,
+      "params": {
+        "ports_0": 1,
+        "capacity_0": 50,
+        "ports_1": 1,
+        "capacity_1": 90,
+        "ports_2": 0,
+        "ports_3": 4,
+        "capacity_3": 100,
+        "ports_4": 4,
+        "capacity_4": 50,
+        "ports_5": 3,
+        "capacity_5": 50,
+        "ports_6": 3,
+        "capacity_6": 50,
+        "ports_7": 0
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 4,
+      "value": 6937.438222222223,
+      "params": {
+        "ports_0": 2,
+        "capacity_0": 50,
+        "ports_1": 3,
+        "capacity_1": 50,
+        "ports_2": 4,
+        "capacity_2": 50,
+        "ports_3": 0,
+        "ports_4": 1,
+        "capacity_4": 90,
+        "ports_5": 4,
+        "capacity_5": 100,
+        "ports_6": 0,
+        "ports_7": 2,
+        "capacity_7": 90
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 5,
+      "value": Infinity,
+      "params": {
+        "ports_0": 0,
+        "ports_1": 3,
+        "capacity_1": 50,
+        "ports_2": 2,
+        "capacity_2": 90,
+        "ports_3": 4,
+        "capacity_3": 50,
+        "ports_4": 4,
+        "capacity_4": 90,
+        "ports_5": 1,
+        "capacity_5": 50,
+        "ports_6": 3,
+        "capacity_6": 50,
+        "ports_7": 4,
+        "capacity_7": 90
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 6,
+      "value": 8559.742580645161,
+      "params": {
+        "ports_0": 0,
+        "ports_1": 1,
+        "capacity_1": 50,
+        "ports_2": 3,
+        "capacity_2": 50,
+        "ports_3": 1,
+        "capacity_3": 90,
+        "ports_4": 2,
+        "capacity_4": 90,
+        "ports_5": 4,
+        "capacity_5": 100,
+        "ports_6": 4,
+        "capacity_6": 90,
+        "ports_7": 0
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 7,
+      "value": Infinity,
+      "params": {
+        "ports_0": 2,
+        "capacity_0": 90,
+        "ports_1": 4,
+        "capacity_1": 50,
+        "ports_2": 2,
+        "capacity_2": 50,
+        "ports_3": 2,
+        "capacity_3": 100,
+        "ports_4": 1,
+        "capacity_4": 50,
+        "ports_5": 3,
+        "capacity_5": 90,
+        "ports_6": 3,
+        "capacity_6": 90,
+        "ports_7": 4,
+        "capacity_7": 100
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 8,
+      "value": Infinity,
+      "params": {
+        "ports_0": 1,
+        "capacity_0": 100,
+        "ports_1": 4,
+        "capacity_1": 100,
+        "ports_2": 3,
+        "capacity_2": 50,
+        "ports_3": 3,
+        "capacity_3": 100,
+        "ports_4": 2,
+        "capacity_4": 100,
+        "ports_5": 2,
+        "capacity_5": 50,
+        "ports_6": 4,
+        "capacity_6": 100,
+        "ports_7": 3,
+        "capacity_7": 100
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 9,
+      "value": Infinity,
+      "params": {
+        "ports_0": 1,
+        "capacity_0": 100,
+        "ports_1": 3,
+        "capacity_1": 100,
+        "ports_2": 3,
+        "capacity_2": 90,
+        "ports_3": 3,
+        "capacity_3": 90,
+        "ports_4": 1,
+        "capacity_4": 100,
+        "ports_5": 3,
+        "capacity_5": 90,
+        "ports_6": 2,
+        "capacity_6": 90,
+        "ports_7": 3,
+        "capacity_7": 100
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 10,
+      "value": 996.46,
+      "params": {
+        "ports_0": 4,
+        "capacity_0": 90,
+        "ports_1": 0,
+        "ports_2": 0,
+        "ports_3": 2,
+        "capacity_3": 50,
+        "ports_4": 0,
+        "ports_5": 0,
+        "ports_6": 2,
+        "capacity_6": 100,
+        "ports_7": 1,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 11,
+      "value": -162.86000000000013,
+      "params": {
+        "ports_0": 4,
+        "capacity_0": 90,
+        "ports_1": 0,
+        "ports_2": 0,
+        "ports_3": 2,
+        "capacity_3": 50,
+        "ports_4": 0,
+        "ports_5": 0,
+        "ports_6": 1,
+        "capacity_6": 100,
+        "ports_7": 1,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 12,
+      "value": 1276.4599999999996,
+      "params": {
+        "ports_0": 4,
+        "capacity_0": 90,
+        "ports_1": 0,
+        "ports_2": 1,
+        "capacity_2": 100,
+        "ports_3": 2,
+        "capacity_3": 50,
+        "ports_4": 0,
+        "ports_5": 0,
+        "ports_6": 1,
+        "capacity_6": 100,
+        "ports_7": 1,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 13,
+      "value": 681.7999999999997,
+      "params": {
+        "ports_0": 4,
+        "capacity_0": 90,
+        "ports_1": 0,
+        "ports_2": 1,
+        "capacity_2": 100,
+        "ports_3": 1,
+        "capacity_3": 50,
+        "ports_4": 0,
+        "ports_5": 0,
+        "ports_6": 1,
+        "capacity_6": 100,
+        "ports_7": 1,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 14,
+      "value": 3346.5759999999996,
+      "params": {
+        "ports_0": 3,
+        "capacity_0": 90,
+        "ports_1": 2,
+        "capacity_1": 90,
+        "ports_2": 1,
+        "capacity_2": 100,
+        "ports_3": 1,
+        "capacity_3": 50,
+        "ports_4": 0,
+        "ports_5": 1,
+        "capacity_5": 90,
+        "ports_6": 1,
+        "capacity_6": 100,
+        "ports_7": 1,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 15,
+      "value": 2843.16,
+      "params": {
+        "ports_0": 4,
+        "capacity_0": 90,
+        "ports_1": 0,
+        "ports_2": 1,
+        "capacity_2": 100,
+        "ports_3": 1,
+        "capacity_3": 50,
+        "ports_4": 3,
+        "capacity_4": 50,
+        "ports_5": 0,
+        "ports_6": 1,
+        "capacity_6": 100,
+        "ports_7": 2,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 16,
+      "value": 625.2120000000011,
+      "params": {
+        "ports_0": 3,
+        "capacity_0": 90,
+        "ports_1": 1,
+        "capacity_1": 100,
+        "ports_2": 1,
+        "capacity_2": 100,
+        "ports_3": 0,
+        "ports_4": 0,
+        "ports_5": 1,
+        "capacity_5": 50,
+        "ports_6": 1,
+        "capacity_6": 100,
+        "ports_7": 1,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 17,
+      "value": -492.1520000000021,
+      "params": {
+        "ports_0": 3,
+        "capacity_0": 90,
+        "ports_1": 2,
+        "capacity_1": 100,
+        "ports_2": 0,
+        "ports_3": 0,
+        "ports_4": 0,
+        "ports_5": 1,
+        "capacity_5": 50,
+        "ports_6": 0,
+        "ports_7": 2,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 18,
+      "value": 4382.552000000001,
+      "params": {
+        "ports_0": 3,
+        "capacity_0": 90,
+        "ports_1": 2,
+        "capacity_1": 100,
+        "ports_2": 0,
+        "ports_3": 0,
+        "ports_4": 3,
+        "capacity_4": 100,
+        "ports_5": 2,
+        "capacity_5": 50,
+        "ports_6": 0,
+        "ports_7": 3,
+        "capacity_7": 50
+      },
+      "state": "COMPLETE"
+    },
+    {
+      "number": 19,
+      "value": 613.6759999999995,
+      "params": {
+        "ports_0": 3,
+        "capacity_0": 50,
+        "ports_1": 2,
+        "capacity_1": 100,
+        "ports_2": 0,
+        "ports_3": 0,
+        "ports_4": 1,
+        "capacity_4": 90,
+        "ports_5": 1,
+        "capacity_5": 50,
+        "ports_6": 0,
+        "ports_7": 2,
+        "capacity_7": 90
+      },
+      "state": "COMPLETE"
+    }
+  ]
+}
