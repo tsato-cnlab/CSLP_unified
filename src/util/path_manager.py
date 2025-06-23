@@ -10,18 +10,18 @@ def get_paths(worker_id=None):
     
     # 通常のパス構造
     paths = {
-        "shikata": os.path.join(base, r"eMATES_2308\network\coupled_network_shikata"),
+        "shikata": os.path.join(base, r"eMATES_2308\network\simple_shikata"),
         "dss": os.path.join(base, r"Evaluation_Function\ev-charging-evaluation\src")
     }
     
     # 依存パスの設定
     paths["csList"] = os.path.join(paths["shikata"], "csList.txt")
-    paths["res"] = os.path.join(paths["shikata"], "result")
+    paths["result"] = os.path.join(paths["shikata"], "result")
     paths["init"] = os.path.join(paths["shikata"], "init.txt")
     paths["signals"] = os.path.join(paths["shikata"], "signals.txt")
-    paths["chrLoss"] = os.path.join(paths["res"], "chargingLoss.txt")
-    paths["trip"] = os.path.join(paths["res"], "vehicleTrip.txt")
-    paths["saveData"] = os.path.join(paths["res"], "Savefile")
+    paths["chrLoss"] = os.path.join(paths["result"], "chargingLoss.txt")
+    paths["trip"] = os.path.join(paths["result"], "vehicleTrip.txt")
+    paths["saveData"] = os.path.join(paths["result"], "Savefile")
     paths["func"] = os.path.join(paths["dss"], "function")
 
     
@@ -37,12 +37,12 @@ def get_paths(worker_id=None):
     
     # 依存するパスも更新
     worker_paths["csList"] = os.path.join(worker_paths["shikata"], "csList.txt")
-    worker_paths["res"] = os.path.join(worker_paths["shikata"], "result")
+    worker_paths["result"] = os.path.join(worker_paths["shikata"], "result")
     worker_paths["init"] = os.path.join(worker_paths["shikata"], "init.txt")
     worker_paths["signals"] = os.path.join(worker_paths["shikata"], "signals.txt")
-    worker_paths["chrLoss"] = os.path.join(worker_paths["res"], "chargingLoss.txt")
-    worker_paths["trip"] = os.path.join(worker_paths["res"], "vehicleTrip.txt")
-    worker_paths["saveData"] = os.path.join(worker_paths["res"], "Savefile")
+    worker_paths["chrLoss"] = os.path.join(worker_paths["result"], "chargingLoss.txt")
+    worker_paths["trip"] = os.path.join(worker_paths["result"], "vehicleTrip.txt")
+    worker_paths["saveData"] = os.path.join(worker_paths["result"], "Savefile")
     worker_paths["init"] = os.path.join(worker_paths["shikata"], "init.txt")
     
     return worker_paths
