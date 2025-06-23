@@ -38,6 +38,31 @@ class EMATESPipeline:
         self.parallel_workers = parallel_workers
         self.debug = debug
         self.logger = self._setup_logging()
+        self.plan_data = {}
+        
+    def collect_plan_data(self, plan_id: str, worker_ids: List[int]) -> Dict:
+        """計画単位でのデータ収集"""
+        plan_data = {
+            "plan_id": plan_id,
+            "metadata": {
+                "created_at": datetime.now(),
+                "worker_count": len(worker_ids)
+            },
+            "cs_data": {}
+        }
+        for worker_id in worker_ids:
+            try:
+                paths = get_paths(worker_id)
+                result_dir = Path(paths["result"])
+                worker_data = self._load_worker_data(worker_id, result_dir, 
+                                                     start_datetime="2024-01-01 00:00:00",
+                                                     resample_freq=None)
+                plan_data["cs_data"][f"worker_{worker_id}"] = worker_data
+            except Exception as e:
+                self.logger.error(f"Worker {worker_id} 処理エラー: {e}")
+        
+        self.plan_data[plan_id] = plan_data
+        return plan_data
         
     def _setup_logging(self):
         """ログ設定"""
@@ -92,13 +117,12 @@ class EMATESPipeline:
             combined_df = pd.concat(t_dfs, ignore_index=True)
             
             # CSIDごとにCap_kWとwaitingLineを集約
-            cap_kw_df, waiting_df = self._aggregate_cs_data_separated(combined_df)
+            unified_df = self._aggregate_cs_data_unified(combined_df)
             
             # 分離版でもdatetime変換を適用
-            cap_kw_df = self._add_datetime_index(cap_kw_df, start_datetime)
-            waiting_df = self._add_datetime_index(waiting_df, start_datetime)
+            unified_df = self._add_datetime_index(unified_df, start_datetime)
             
-            return {"cap_kw": cap_kw_df, "waiting_line": waiting_df}
+            return unified_df
                 
         except Exception as e:
             self.logger.warning(f"Tファイル読み込みエラー: {e}")
@@ -128,10 +152,10 @@ class EMATESPipeline:
             self.logger.warning(f"datetime変換エラー: {e}")
             return df
     
-    def _aggregate_cs_data_separated(self, df: pd.DataFrame) -> tuple:
+    def _aggregate_cs_data_unified(self, df: pd.DataFrame) -> pd.DataFrame:
         """CSIDごとのデータを時間ごとに集約（分離版）"""
         try:
-            # Cap_kWとwaitingLineを別々のDataFrameとして作成
+            # Cap_kWとwaitingLineを同じDataFrameとして作成
             cap_kw_df = df.pivot_table(
                 index='ElapsedTime',
                 columns='Csid',
@@ -147,18 +171,18 @@ class EMATESPipeline:
                 fill_value=0
             )
             waiting_df.columns = [f'CS_{csid}' for csid in waiting_df.columns]
-            
+                        
             # ElapsedTimeを列として復元
-            cap_kw_df = cap_kw_df.reset_index()
-            waiting_df = waiting_df.reset_index()
+            unified_df = pd.concat([cap_kw_df, waiting_df], axis=1)
+            unified_df.reset_index(inplace=True)
             
-            self.logger.info(f"CS集約完了（分離版）: Cap_kW {cap_kw_df.shape}, waitingLine {waiting_df.shape}")
+            self.logger.info(f"CS情報の統一: Cap_kW {unified_df.shape}")
             
-            return cap_kw_df, waiting_df
+            return unified_df
             
         except Exception as e:
-            self.logger.warning(f"CS集約エラー（分離版）: {e}")
-            return pd.DataFrame(), pd.DataFrame()
+            self.logger.warning(f"CS集約エラー: {e}")
+            return pd.DataFrame()
 
 
     def _resample_timeseries(self, df: pd.DataFrame, freq: str = '1H') -> pd.DataFrame:
@@ -199,28 +223,61 @@ class EMATESPipeline:
         emates_dir = result_dir / "emates"
         
         # 時系列データ（Tファイル）- datetime変換
-        t_data = self._load_T_files(emates_dir, start_datetime)
+        timeseries_df = self._load_T_files(emates_dir, start_datetime)
         
         # 必要に応じてリサンプリング
-       # if resample_freq:
-       #     t_data = self._resample_timeseries(t_data.get('cap_kw'), resample_freq)
+        if resample_freq:
+            t_data = self._resample_timeseries(t_data.get('cap_kw'), resample_freq)
             
         
         # 充電ロスデータ
         charging_loss = self._load_charging_loss(result_dir)
-        
         # 走行データ
         vehicle_trip = self._load_vehicle_trip(result_dir)
+        # CSIDとポート情報の抽出
+        cs_data = self._get_cs_List(worker_id)
         
         return {
             "worker_id": worker_id,
             "result_dir": result_dir,
-            "timeseries": t_data,
+            "timeseries": timeseries_df,
             "charging_loss": charging_loss,
             "vehicle_trip": vehicle_trip,
-            "start_datetime": start_datetime
+            "csids": cs_data['csids'],
+            "ports": cs_data['ports'],
+            "cap_kw": cs_data['cap_kw'],
+            "total_ports": cs_data['total_ports'],
         }
-
+    
+    def _get_cs_list(self, worker_id: int) -> Dict[str, any]:
+        """CSリストファイルからCS情報を取得"""
+        try:
+            paths = get_paths(worker_id)
+            csList_file = paths["csList"]
+            cs_info = pd.read_csv(csList_file, sep=',', header=None, names=['CSID', 'Port', 'Cap_kw'])
+            
+            # CS情報を辞書形式で整理
+            cs_data = {
+                'csids': cs_info['CSID'].tolist(),
+                'ports': cs_info['Port'].tolist(),
+                'cap_kw': cs_info['Cap_kw'].tolist(),
+                'total_ports': cs_info['Port'].sum(),
+                'total_cs_count': len(cs_info)
+            }
+            
+            self.logger.info(f"Worker {worker_id}: CS情報取得完了 - {cs_data['total_cs_count']}箇所, 総ポート数: {cs_data['total_ports']}")
+            return cs_data
+            
+        except Exception as e:
+            self.logger.warning(f"Worker {worker_id} CS情報取得エラー: {e}")
+            return {
+                'csids': [],
+                'ports': [],
+                'cap_kw': [],
+                'total_ports': 0,
+                'total_cs_count': 0,
+            }
+        
     def collect_worker_data(self, max_workers: int = 100, 
                            start_datetime: str = "2024-01-01 00:00:00",
                            resample_freq: Optional[str] = None) -> Dict[str, Dict]:
@@ -232,7 +289,7 @@ class EMATESPipeline:
         for worker_id in range(1, max_workers + 1):
             try:
                 paths = get_paths(worker_id)
-                result_dir = Path(paths["res"])
+                result_dir = Path(paths["result"])
                 
                 if not result_dir.exists():
                     self.logger.info(f"Worker {worker_id} が見つからないため処理終了")

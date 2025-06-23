@@ -22,6 +22,7 @@ class DataLoader:
         return logging.getLogger(__name__)
     
     # ===== コア機能 =====
+    # シナリオ・年度別データ収集
     def collect_scenario_data(self, scenario_id: int, year: int, worker_ids: List[int]) -> Dict:
         """シナリオ・年度別データ収集"""
         from src.util.scenario import get_adoption_rate
@@ -39,14 +40,10 @@ class DataLoader:
         }
         
         for worker_id in worker_ids:
-            try:
                 paths = get_paths(worker_id)
                 result_dir = Path(paths["result"])
                 worker_data = self._load_worker_data(worker_id, result_dir)
                 scenario_data["cs_data"][f"worker_{worker_id}"] = worker_data
-            except Exception as e:
-                self.logger.error(f"Worker {worker_id} 処理エラー: {e}")
-        
         return scenario_data
     # 並列を使う場合のデータ処理
     def collect_worker_data(self, max_workers: int = 100, 
@@ -58,28 +55,56 @@ class DataLoader:
         worker_data_collection = {}
         
         for worker_id in range(1, max_workers + 1):
-            try:
-                paths = get_paths(worker_id)
-                result_dir = Path(paths["result"])
-                
-                if not result_dir.exists():
-                    self.logger.info(f"Worker {worker_id} が見つからないため処理終了")
-                    break
-                
-                # データ収集（datetime対応）
-                worker_data = self._load_worker_data(
-                    worker_id, result_dir, start_datetime, resample_freq
-                )
-                
-                worker_data_collection[f"worker_{worker_id}"] = worker_data
-                
-            except Exception as e:
-                self.logger.error(f"Worker {worker_id} データ収集エラー: {e}")
-                continue
-        
-        self.logger.info(f"総計 {len(worker_data_collection)} ワーカーのデータを収集")
+            paths = get_paths(worker_id)
+            result_dir = Path(paths["result"])
+            
+            if not result_dir.exists():
+                self.logger.info(f"Worker {worker_id} が見つからないため処理終了")
+                break
+            
+            # データ収集（datetime対応）
+            worker_data = self._load_worker_data(
+                worker_id, result_dir, start_datetime, resample_freq
+            )
+            
+            worker_data_collection[f"worker_{worker_id}"] = worker_data
         return worker_data_collection
-    
+
+    def _load_worker_data(self, worker_id: int, result_dir: Path, 
+                        start_datetime: str = "2024-01-01 00:00:00",
+                        resample_freq: Optional[str] = None) -> Dict:
+        """単一ワーカーのデータ読み込み - datetime対応版"""
+        emates_dir = result_dir / "emates"
+        
+        # 時系列データ（Tファイル）- datetime変換
+        cap_kw_df, waiting_line_df = self._load_T_files(emates_dir, start_datetime)
+        
+        
+        # 必要に応じてリサンプリング
+        if resample_freq:
+            t_data = self._resample_timeseries(t_data.get('cap_kw'), resample_freq)
+            
+        
+        # 充電ロスデータ
+        charging_loss = self._load_charging_loss(result_dir)
+        # 走行データ
+        vehicle_trip = self._load_vehicle_trip(result_dir)
+        # CSIDとポート情報の抽出
+        cs_data = self._get_cs_list(worker_id)
+        
+        return {
+            "worker_id": worker_id,
+            "result_dir": result_dir,
+            "time_series_kw": cap_kw_df,
+            "time_series_waiting_line": waiting_line_df,
+            "charging_loss": charging_loss,
+            "vehicle_trip": vehicle_trip,
+            "csids": cs_data['csids'],
+            "ports": cs_data['ports'],
+            "cap_kw": cs_data['cap_kw'],
+            "total_ports": cs_data['total_ports'],
+        }
+        
     def _load_T_files(self, emates_dir: Path, start_datetime: str = "2024-01-01 00:00:00") -> pd.DataFrame:
         """Tファイル（時系列データ）の読み込み - datetime対応版"""
         try:
@@ -164,32 +189,27 @@ class DataLoader:
     
     def _aggregate_cs_data_separated(self, df: pd.DataFrame) -> pd.DataFrame:
         """CSIDごとのデータを時間ごとに集約（分離版）"""
-        try:
-            # Cap_kWとwaitingLineを同じDataFrameとして作成
-            cap_kw_df = df.pivot_table(
-                index='ElapsedTime',
-                columns='Csid',
-                values='Cap_kW',
-                fill_value=0
-            )
-            cap_kw_df.columns = [f'{csid}' for csid in cap_kw_df.columns]
-            
-            waiting_df = df.pivot_table(
-                index='ElapsedTime',
-                columns='Csid',
-                values='waitingLine',
-                fill_value=0
-            )
-            waiting_df.columns = [f'{csid}' for csid in waiting_df.columns]
-            
-            cap_kw_df.reset_index(inplace=True)
-            waiting_df.reset_index(inplace=True)
-                                    
-            return cap_kw_df, waiting_df
-            
-        except Exception as e:
-            self.logger.warning(f"CS集約エラー: {e}")
-            return pd.DataFrame()
+        # Cap_kWとwaitingLineを同じDataFrameとして作成
+        cap_kw_df = df.pivot_table(
+            index='ElapsedTime',
+            columns='Csid',
+            values='Cap_kW',
+            fill_value=0
+        )
+        cap_kw_df.columns = [f'{csid}' for csid in cap_kw_df.columns]
+        
+        waiting_df = df.pivot_table(
+            index='ElapsedTime',
+            columns='Csid',
+            values='waitingLine',
+            fill_value=0
+        )
+        waiting_df.columns = [f'{csid}' for csid in waiting_df.columns]
+        
+        cap_kw_df.reset_index(inplace=True)
+        waiting_df.reset_index(inplace=True)
+                                
+        return cap_kw_df, waiting_df
 
     def _resample_timeseries(self, df: pd.DataFrame, freq: str = '1H') -> pd.DataFrame:
         """時系列データのリサンプリング（補間用）"""
@@ -222,137 +242,78 @@ class DataLoader:
             self.logger.warning(f"リサンプリングエラー: {e}")
             return df
 
-    def _load_worker_data(self, worker_id: int, result_dir: Path, 
-                        start_datetime: str = "2024-01-01 00:00:00",
-                        resample_freq: Optional[str] = None) -> Dict:
-        """単一ワーカーのデータ読み込み - datetime対応版"""
-        emates_dir = result_dir / "emates"
-        
-        # 時系列データ（Tファイル）- datetime変換
-        cap_kw_df, waiting_line_df = self._load_T_files(emates_dir, start_datetime)
-        
-        
-        # 必要に応じてリサンプリング
-        if resample_freq:
-            t_data = self._resample_timeseries(t_data.get('cap_kw'), resample_freq)
-            
-        
-        # 充電ロスデータ
-        charging_loss = self._load_charging_loss(result_dir)
-        # 走行データ
-        vehicle_trip = self._load_vehicle_trip(result_dir)
-        # CSIDとポート情報の抽出
-        cs_data = self._get_cs_list(worker_id)
-        
-        return {
-            "worker_id": worker_id,
-            "result_dir": result_dir,
-            "time_series_kw": cap_kw_df,
-            "time_series_waiting_line": waiting_line_df,
-            "charging_loss": charging_loss,
-            "vehicle_trip": vehicle_trip,
-            "csids": cs_data['csids'],
-            "ports": cs_data['ports'],
-            "cap_kw": cs_data['cap_kw'],
-            "total_ports": cs_data['total_ports'],
-        }
-    
     def _get_cs_list(self, worker_id: int) -> Dict[str, any]:
         """CSリストファイルからCS情報を取得"""
-        try:
-            paths = get_paths(worker_id)
-            csList_file = paths["csList"]
-            cs_info = pd.read_csv(csList_file, sep=',', header=None, names=['CSID', 'Port', 'Cap_kw'])
-            
-            # CS情報を辞書形式で整理
-            cs_data = {
-                'csids': cs_info['CSID'].tolist(),
-                'ports': cs_info['Port'].tolist(),
-                'cap_kw': cs_info['Cap_kw'].tolist(),
-                'total_ports': cs_info['Port'].sum(),
-                'total_cs_count': len(cs_info)
-            }
-            
-            self.logger.info(f"Worker {worker_id}: CS情報取得完了 - {cs_data['total_cs_count']}箇所, 総ポート数: {cs_data['total_ports']}")
-            return cs_data
-            
-        except Exception as e:
-            self.logger.warning(f"Worker {worker_id} CS情報取得エラー: {e}")
-            return {
-                'csids': [],
-                'ports': [],
-                'cap_kw': [],
-                'total_ports': 0,
-                'total_cs_count': 0,
-            }
+        paths = get_paths(worker_id)
+        csList_file = paths["csList"]
+        cs_info = pd.read_csv(csList_file, sep=',', header=None, names=['CSID', 'Port', 'Cap_kw'])
+        
+        # CS情報を辞書形式で整理
+        cs_data = {
+            'csids': cs_info['CSID'].tolist(),
+            'ports': cs_info['Port'].tolist(),
+            'cap_kw': cs_info['Cap_kw'].tolist(),
+            'total_ports': cs_info['Port'].sum(),
+            'total_cs_count': len(cs_info)
+        }
+        return cs_data
+
     
     def _load_charging_loss(self, result_dir: Path) -> pd.DataFrame:
         """充電ロスデータの読み込み"""
-        try:
-            charging_loss_path = result_dir / "chargingLoss.txt"
-            if not charging_loss_path.exists():
-                return pd.DataFrame()
-            
-            df = pd.read_csv(
-                charging_loss_path, sep=',',header=None,
-                names=['Time', 'EVID', 'CSID', 'WaitingNum', 'NumPorts', 'SOC']
-            )
-            # 時間をmsから秒に変換
-            df['Time_sec'] = df['Time'] / 1000
-            
-            # 60秒間隔にビニング
-            df['ElapsedTime'] = (df['Time_sec'] // 60) * 60
-            df.drop(columns=['Time_sec','Time'], inplace=True)
-            df = self._add_datetime_index(df, "2024-01-01 00:00:00")
-            return df
+        charging_loss_path = result_dir / "chargingLoss.txt"
         
-        except Exception as e:
-            self.logger.warning(f"充電ロスデータ読み込みエラー: {e}")
-            return pd.DataFrame()
+        df = pd.read_csv(
+            charging_loss_path, sep=',',header=None,
+            names=['Time', 'EVID', 'CSID', 'WaitingNum', 'NumPorts', 'SOC']
+        )
+        # 時間をmsから秒に変換
+        df['Time_sec'] = df['Time'] / 1000
+        
+        # 60秒間隔にビニング
+        df['ElapsedTime'] = (df['Time_sec'] // 60) * 60
+        df.drop(columns=['Time_sec','Time'], inplace=True)
+        df = self._add_datetime_index(df, "2024-01-01 00:00:00")
+        return df
     
     def _load_vehicle_trip(self, result_dir: Path) -> pd.DataFrame:
         """走行データの読み込み"""
-        try:
-            vehicle_trip_path = result_dir / "vehicleTrip.txt"
-            if not vehicle_trip_path.exists():
-                return pd.DataFrame()
-            
-            df = pd.read_csv(
-                vehicle_trip_path, sep=r',',usecols=[0, 2, 3, 4, 5, 8,9,10,11, 14],
-                names=['EVID','StartTime', 'EndTime', 'WaitingEntryTime','startChargingTime',
-                       'startID','goalID','tripLength','CSID', 'InitialSOC'],
-                dtype=str
-            )
-                    # 特殊文字の処理
-            def clean_numeric_value(value):
-                """数値変換前の前処理"""
-                if pd.isna(value) or value == '' or value == '******':
-                    return np.nan
-                try:
-                    return float(value)
-                except (ValueError, TypeError):
-                    return np.nan
-            
-            # 各列を適切な型に変換
-            numeric_columns = ['EVID', 'StartTime', 'EndTime', 'WaitingEntryTime', 
-                            'startChargingTime', 'startID', 'goalID', 'tripLength', 
-                            'CSID', 'InitialSOC']
-            
-            for col in numeric_columns:
-                if col in df.columns:
-                    df[col] = df[col].apply(clean_numeric_value)
-            # 時間を秒に変換
-            
-            df['StartTime'] = df['StartTime'] / 1000
-            df['EndTime'] = df['EndTime'] / 1000
-            df['WaitingEntryTime'] = df['WaitingEntryTime'] / 1000
-            df['startChargingTime'] = df['startChargingTime'] / 1000
-            
-            return df
-            
-        except Exception as e:
-            self.logger.warning(f"走行データ読み込みエラー: {e}")
+        vehicle_trip_path = result_dir / "vehicleTrip.txt"
+        if not vehicle_trip_path.exists():
             return pd.DataFrame()
+        
+        df = pd.read_csv(
+            vehicle_trip_path, sep=r',',usecols=[0, 2, 3, 4, 5, 8,9,10,11, 14],
+            names=['EVID','StartTime', 'EndTime', 'WaitingEntryTime','startChargingTime',
+                    'startID','goalID','tripLength','CSID', 'InitialSOC'],
+            dtype=str
+        )
+                # 特殊文字の処理
+        def clean_numeric_value(value):
+            """数値変換前の前処理"""
+            if pd.isna(value) or value == '' or value == '******':
+                return np.nan
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return np.nan
+        
+        # 各列を適切な型に変換
+        numeric_columns = ['EVID', 'StartTime', 'EndTime', 'WaitingEntryTime', 
+                        'startChargingTime', 'startID', 'goalID', 'tripLength', 
+                        'CSID', 'InitialSOC']
+        
+        for col in numeric_columns:
+            if col in df.columns:
+                df[col] = df[col].apply(clean_numeric_value)
+        # 時間を秒に変換
+        
+        df['StartTime'] = df['StartTime'] / 1000
+        df['EndTime'] = df['EndTime'] / 1000
+        df['WaitingEntryTime'] = df['WaitingEntryTime'] / 1000
+        df['startChargingTime'] = df['startChargingTime'] / 1000
+        
+        return df
     
         
         
