@@ -101,7 +101,9 @@ def cs_placement_objective(trial):
     """CS配置最適化の目的関数"""
     paths = get_paths(1)  # worker_idは1と仮定
     # csList.txtの情報を取得
-    cslist_file = paths['csList']
+    # cslist_file = paths['csList']
+    cslist_file = r"/home/tsato-cnlab/Emates/eMATES_2308/network/simple_shikata_1/csList.txt"
+
     with open(cslist_file, 'r') as f:
         cslist_data = f.readlines()
     cslist_data = [line.strip() for line in cslist_data if line.strip()]
@@ -125,7 +127,7 @@ def cs_placement_objective(trial):
             ports = trial.suggest_int(f'ports_{i}', 0, 4)
             if ports > 0:
                 # 設置する場合のみ容量を決定
-                capacity = trial.suggest_categorical(f'capacity_{i}', [50, 90, 100])
+                capacity = trial.suggest_categorical(f'capacity_{i}', [50, 100])
             else:
                 # 設置しない場合は容量は任意（50に固定）
                 capacity = 90
@@ -136,11 +138,6 @@ def cs_placement_objective(trial):
         cs_config['cap_kw'].append(capacity)
         
     # 2. 制約チェック----------
-    # 2.1. ポート数の合計が最大値を超えない
-    total_ports = sum(cs_config['ports'])
-    if total_ports > 17:  # 最大ポート数は17
-        return float('inf')
-    # 2.2. 設置箇所の数が最低2箇所
     # 2.2. 設置箇所の数が最低2箇所
     installed_locations = [i for i, port in enumerate(cs_config['ports']) if port > 0]
     if len(installed_locations) < 2:  # 最低2箇所は設置
@@ -188,7 +185,7 @@ def simulate_and_calculate_cost(cs_configs, trial) -> tuple:
 
 # 最適化実行
 study = optuna.create_study(direction='minimize')
-study.optimize(cs_placement_objective, n_trials=50)
+study.optimize(cs_placement_objective, n_trials=10)
 
 print(f"最適コスト: {study.best_value}")
 print(f"最適配置: {study.best_params}")
@@ -218,6 +215,7 @@ optimization_results['trials'] = trials_data
 
 # JSONファイルとして保存
 results_dir = 'optimization_results'
+results_dir = os.path.join(SAVE_DIR, results_dir)
 os.makedirs(results_dir, exist_ok=True)
 
 with open(os.path.join(results_dir, 'optuna_results.json'), 'w', encoding='utf-8') as f:
