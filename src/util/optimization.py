@@ -87,15 +87,15 @@ def calc_diff_trnsprt_costs(vehicle_trip: pd.DataFrame) -> float:
     TIME_VALUE_OF_MONEY = 1118*1e-4  # 時間あたりの価値（円/時）
     RESULT_PATH_NOCS = r'\\wsl.localhost\Ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\simple_shikata\result\no_charging_station'
     # 充電ありの総旅行時間
-    trip_time = _calc_trip_time(vehicle_trip)
+    trip_time_hour = _calc_trip_time(vehicle_trip)
     charging_trip = vehicle_trip[vehicle_trip['startChargingTime'] > 0]
     waiting_times_hour = (charging_trip['startChargingTime'] - charging_trip['WaitingEntryTime']) / 3600  # 時間単位に変換
     total_waiting_times = np.sum(waiting_times_hour)
     # 充電ありと充電なしの総旅行時間の差分
     # baseline_trip_time = _calc_baseline_trip_time(RESULT_PATH_NOCS)
     # diff_trip_time = trip_time - baseline_trip_time
-    diff_trip_time = trip_time - 6062.5865
-    
+    diff_trip_time = trip_time_hour - 6062.5865
+
     # 時間あたりの価値を掛けて輸送コストを計算(待ち時間は2倍の価値を持つと仮定)
     transport_costs = ((diff_trip_time - total_waiting_times) + 2 * total_waiting_times) * TIME_VALUE_OF_MONEY  # 時間単位に変換
     # 年間の輸送コストを計算

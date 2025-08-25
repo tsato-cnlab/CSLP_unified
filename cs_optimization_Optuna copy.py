@@ -173,13 +173,13 @@ if __name__ == "__main__":
     # SAVEDIRをグローバル変数として初期化。
     current_time = datetime.now().strftime('%Y%m%d_%H%M')
     SAVE_DIR = current_time
-    SAVE_DIR = "20250815_0955"  # ここは適宜変更してください
+    # SAVE_DIR = "20250815_0955"  # ここは適宜変更してください
     os.makedirs(SAVE_DIR, exist_ok=True)
     
     
     # タイムアウトを設定
-    TIMEOUT = 60 * 60 * 22  # 22時間のタイムアウト設定
-    additional_trials = 200  # 追加で実行するトライアル数
+    TIMEOUT = 60 * 60 * 24  # 24時間のタイムアウト設定
+    additional_trials = 500  # 追加で実行するトライアル数
     
     
     # SQLiteデータベースを使用したStudy管理
