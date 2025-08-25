@@ -21,7 +21,7 @@ class ParallelEnvironment:
         parallel_count (int): 並列実行数
         cs_config (list): 充電ステーション構成
     """
-    def __init__(self, parallel_count, cs_config):
+    def __init__(self, cs_config, parallel_count=None):
         # パス獲得
         self.paths = get_paths()
         self.orig_dir = self.paths["shikata"]
@@ -108,31 +108,35 @@ class ParallelEnvironment:
             
     def update_shikata_dir(self):
         # 各ワーカー用にディレクトリをコピー
-        for i in range(1, self.parallel_count + 1):
-            self.target_dir = f"{self.orig_dir}_{i}"
-            target_dir_with_slash = self.target_dir + os.sep 
-            self.wsl_path_init_txtfile = convert_to_wsl_path(target_dir_with_slash)
+        if self.parallel_count is None:
+            self.target_dir = self.orig_dir
+            self.update_cs_list()
+        else:
+            for i in range(1, self.parallel_count + 1):
+                self.target_dir = f"{self.orig_dir}_{i}"
+                target_dir_with_slash = self.target_dir + os.sep 
+                self.wsl_path_init_txtfile = convert_to_wsl_path(target_dir_with_slash)
 
-            # ディレクトリが存在しない場合のみコピー
-            if not os.path.exists(self.target_dir):
-                # 並列用の処理
-                self.create_parallel_dir()
-                self.copy_to_parallel_dir()
-                self.update_init_txtfile()
-                self.update_cs_list()
-                logging.info(f"Worker {i}のディレクトリ作成: {self.target_dir}")
-            else:
-                self.update_cs_list()
-                logging.info(f"Worker {i}のディレクトリは既に存在: {self.target_dir}")
+                # ディレクトリが存在しない場合のみコピー
+                if not os.path.exists(self.target_dir):
+                    # 並列用の処理
+                    self.create_parallel_dir()
+                    self.copy_to_parallel_dir()
+                    self.update_init_txtfile()
+                    self.update_cs_list()
+                    logging.info(f"Worker {i}のディレクトリ作成: {self.target_dir}")
+                else:
+                    self.update_cs_list()
+                    logging.info(f"Worker {i}のディレクトリは既に存在: {self.target_dir}")
 
 
             
-def prepare_parallel_environment(parallel_count, cs_config):
+def prepare_parallel_environment(cs_config, parallel_count=None):
     """
     並列処理のための環境を準備する関数.独立した入出力フォルダの作成のために制作。
     仮に単体のシミュレーションを行いたい場合は，parallel_countを1にして実行すれば良い。
     """
-    env = ParallelEnvironment(parallel_count, cs_config)
+    env = ParallelEnvironment(cs_config, parallel_count)
     env.update_shikata_dir()
         
 import sys

@@ -15,15 +15,18 @@ from src.util.path_manager import get_paths
 TARGET_CANDIDATES = 8  # 候補地の数
 
 
-def save_data_to_pickle(worker_id: int, filename: str):
+def save_data_to_pickle(filename: str, worker_id=None):
     """データをpickle形式で保存"""
     result_emates = load_worker_data(worker_id)
     with open(filename, 'wb') as f:
         pickle.dump(result_emates, f)
 
-def load_worker_data(worker_id: int) -> dict:
+def load_worker_data(worker_id=None) -> dict:
     """ワーカーデータ読み込み"""
-    paths = get_paths(worker_id)
+    if not worker_id:
+        paths = get_paths()
+    else:
+        paths = get_paths(worker_id)
     result_dir = Path(paths["result"])
     all_candidate_csids = [900000 + i * 2 for i in range(TARGET_CANDIDATES)]
 

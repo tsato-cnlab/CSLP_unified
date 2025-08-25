@@ -1,0 +1,91 @@
+[
+  {
+    "solution_id": "P0",
+    "failure_avg_cost": 6027.128,
+    "worst_wait_time": 1641.130000000001,
+    "params": {
+      "ports_0": 2,
+      "capacity_0": 90,
+      "ports_1": 2,
+      "capacity_1": 100,
+      "ports_2": 3,
+      "capacity_2": 50,
+      "ports_3": 4,
+      "capacity_3": 50,
+      "ports_4": 1,
+      "capacity_4": 90,
+      "ports_5": 2,
+      "capacity_5": 90,
+      "ports_6": 0,
+      "ports_7": 1,
+      "capacity_7": 100
+    },
+    "trial_number": 21
+  },
+  {
+    "solution_id": "P1",
+    "failure_avg_cost": 7948.2559999999985,
+    "worst_wait_time": 1551.1749999999968,
+    "params": {
+      "ports_0": 3,
+      "capacity_0": 90,
+      "ports_1": 1,
+      "capacity_1": 90,
+      "ports_2": 0,
+      "ports_3": 3,
+      "capacity_3": 50,
+      "ports_4": 1,
+      "capacity_4": 90,
+      "ports_5": 3,
+      "capacity_5": 100,
+      "ports_6": 2,
+      "capacity_6": 100,
+      "ports_7": 2,
+      "capacity_7": 90
+    },
+    "trial_number": 22
+  },
+  {
+    "solution_id": "P2",
+    "failure_avg_cost": 2012.6959999999992,
+    "worst_wait_time": 2422.270000000001,
+    "params": {
+      "ports_0": 4,
+      "capacity_0": 50,
+      "ports_1": 2,
+      "capacity_1": 90,
+      "ports_2": 2,
+      "capacity_2": 100,
+      "ports_3": 2,
+      "capacity_3": 50,
+      "ports_4": 0,
+      "ports_5": 0,
+      "ports_6": 0,
+      "ports_7": 2,
+      "capacity_7": 50
+    },
+    "trial_number": 23
+  },
+  {
+    "solution_id": "P3",
+    "failure_avg_cost": 3903.428,
+    "worst_wait_time": 2278.449999999997,
+    "params": {
+      "ports_0": 4,
+      "capacity_0": 50,
+      "ports_1": 1,
+      "capacity_1": 100,
+      "ports_2": 0,
+      "ports_3": 0,
+      "ports_4": 3,
+      "capacity_4": 50,
+      "ports_5": 2,
+      "capacity_5": 90,
+      "ports_6": 4,
+      "capacity_6": 50,
+      "ports_7": 1,
+      "capacity_7": 100
+    },
+    "trial_number": 24
+  }
+]
