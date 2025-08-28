@@ -50,24 +50,6 @@ def cleanup_opendss_csv_files(worker_id=None):
             print(f"🧹 Worker{worker_id}: {len(csv_files)}個のCSVファイルをクリーンアップ")
     return True
 
-def validate_and_fix_csv_file(csv_path, default_value=0):
-    """CSVファイルの-1値を修正"""
-    if not os.path.exists(csv_path):
-        return False
-    try:
-        df = pd.read_csv(csv_path)
-        if (df == -1).any().any():
-            df = df.replace(-1, default_value)
-            df.to_csv(csv_path, index=False)
-            print(f"✓ CSVファイルの-1値を修正: {csv_path}")
-        return True
-    except Exception as e:
-        print(f"❌ CSV修正エラー {csv_path}: {e}")
-        try:
-            os.remove(csv_path)
-        except:
-            pass
-        return False
 
 def cleanup_worker_environments():
     """ワーカー環境をクリーンアップ"""
@@ -112,12 +94,15 @@ def wait_for_simulation_completion(worker_id, timeout=300):
 def run_single_worker_simulation(cs_config, failure_cs_idx, trial_number, save_dir, worker_id):
     """単一ワーカーでシミュレーション実行"""
     try:
-        print(f"🚀 Worker{worker_id}: 故障CS{failure_cs_idx}処理開始")
         time.sleep(worker_id * 0.1)  # 競合回避
         
         # CSV クリーンアップ
         cleanup_opendss_csv_files(worker_id)
-        
+        # csList.txtの更新
+        paths = get_paths(worker_id)
+        csList_file = paths['csList']
+        update_cs_list(csList_file, cs_config)
+
         # 故障情報作成（リトライ付き）
         for retry in range(3):
             try:
@@ -129,6 +114,7 @@ def run_single_worker_simulation(cs_config, failure_cs_idx, trial_number, save_d
                     raise e
                 print(f"⚠️ Worker{worker_id} 故障情報作成リトライ {retry + 1}/3")
                 time.sleep(1 + retry * 0.5)
+        time.sleep(1)
 
         # シミュレーション実行（リトライ付き）
         start_time = time.time()
@@ -149,16 +135,12 @@ def run_single_worker_simulation(cs_config, failure_cs_idx, trial_number, save_d
             raise Exception("シミュレーション実行に失敗")
         
         elapsed_time = time.time() - start_time
-        print(f"✅ Worker{worker_id}: シミュレーション完了 ({elapsed_time:.1f}秒)")
-        
-        # CSV検証・修正
-        validate_csv_files(worker_id)
-        
+        # print(f"✅ Worker{worker_id}: シミュレーション完了 ({elapsed_time:.1f}秒)")
+
         # 結果保存・計算
         return save_and_calculate_results(trial_number, failure_cs_idx, save_dir, worker_id)
         
     except Exception as e:
-        print(f"💥 Worker{worker_id}: 故障CS{failure_cs_idx}で致命的エラー: {e}")
         try:
             cleanup_opendss_csv_files(worker_id)
         except:
@@ -171,18 +153,6 @@ def run_single_worker_simulation(cs_config, failure_cs_idx, trial_number, save_d
             'wait_time_95p': float('inf'),
             'error': str(e)
         }
-
-def validate_csv_files(worker_id):
-    """ワーカーのCSVファイルを検証・修正"""
-    paths = get_paths()
-    base_dir = f"{paths['shikata']}_{worker_id}"
-    opendss_dir = os.path.join(base_dir, "result", "opendss")
-    
-    if os.path.exists(opendss_dir):
-        csv_files = [f for f in os.listdir(opendss_dir) if f.endswith('.csv')]
-        for csv_file in csv_files:
-            csv_path = os.path.join(opendss_dir, csv_file)
-            validate_and_fix_csv_file(csv_path, default_value=0)
 
 def save_and_calculate_results(trial_number, failure_cs_idx, save_dir, worker_id):
     """結果保存とコスト計算"""
@@ -218,7 +188,7 @@ def create_failure_scenario_parallel(cs_config, trial, max_workers, parallel_cou
     # 組み合わせごとに固定で8個のWorkerを割り当て
     worker_start = combination_id * 8 + 1  # 1-8, 9-16, 17-24, 25-32
     worker_end = worker_start + 7
-    print(f"Worker割り当て: {worker_start}-{worker_end}, 設置CS数: {len(installed_cs_indices)}")
+    # print(f"Worker割り当て: {worker_start}-{worker_end}, 設置CS数: {len(installed_cs_indices)}")
 
     # 並列実行
     start_time = time.time()
@@ -306,7 +276,7 @@ def setup_worker_environment(cs_sample, max_batch, parallel_count):
         try:
             prepare_parallel_environment(cs_sample, max_batch, parallel_count)
             time.sleep(0.5 + retry * 0.2)
-            print(f"✓ 32個のワーカー環境を構築完了")
+            print(f"✓ 32個のワーカー環境を構築完了")            
             return True
         except Exception as e:
             print(f"⚠️ 環境構築リトライ {retry + 1}/3: {e}")
@@ -355,7 +325,8 @@ def run_random_search_phase(study, n_startup_trials, parallel_count, max_batch, 
         
         if not setup_worker_environment(batch_params[0], max_batch, parallel_count):
             continue
-        
+
+
         # トライアル作成・実行
         batch_trials = [study.ask() for _ in batch_params]
         results = execute_batch_parallel(batch_trials, batch_params, max_batch, parallel_count)
@@ -397,6 +368,7 @@ def run_tpe_search_phase(study, n_trials, parallel_count, max_batch):
         
         if not setup_worker_environment(batch_params[0], max_batch, parallel_count):
             continue
+        time.sleep(1)
         
         results = execute_batch_parallel(batch_trials, batch_params, max_batch, parallel_count)
         
@@ -409,7 +381,7 @@ def run_tpe_search_phase(study, n_trials, parallel_count, max_batch):
 # =======================
 # メイン実行関数
 # =======================
-def run_multi_batch_parallel_failure_optimization(n_trials=250, parallel_count=4, max_batch=8, random_phase_ratio=0.25):
+def run_multi_batch_parallel_failure_optimization(n_trials=250, parallel_count=4, max_batch=8, n_startup_trials=50):
     """メイン最適化実行関数"""
     print("🧹 ワーカー環境のクリーンアップ中...")
     cleanup_worker_environments()
@@ -422,7 +394,6 @@ def run_multi_batch_parallel_failure_optimization(n_trials=250, parallel_count=4
         csids = [int(line.split(',')[0]) for line in cslist_data 
                 if line.strip() and line.split(',')[0].isdigit()]
 
-    n_startup_trials = int(n_trials * random_phase_ratio)
     study = load_or_create_study()
     completed_trials = len(study.trials)
     print(f"📊 DB進捗確認: {completed_trials}/{n_trials} 完了")
@@ -517,6 +488,37 @@ def manage_pkl_files_after_optimization(study, save_dir):
     
     print(f"✅ {moved_count}個のファイルをバックアップに移動完了")
 
+
+def update_cs_list(csList_file, cs_config):
+    """CSリストを更新する公開メソッド"""
+    updated_lines = _update_cs_counts(cs_config)
+    _write_cs_list_file(csList_file, updated_lines)
+
+
+def _update_cs_counts(cs_config):
+    """CS数を設定に基づいて更新する内部メソッド"""
+    updated = []
+    # cs_configから設定を取得
+    csids = cs_config.get('csids', [])
+    ports = cs_config.get('ports', [])
+    cap_kw = cs_config.get('cap_kw', [])
+
+    for i in range(len(csids)):
+        csid = csids[i]
+        port = ports[i]
+        cap = cap_kw[i]
+        
+        # CSIDの行を更新
+        updated.append(f"{csid},{port},{cap}\n")
+    return updated
+
+def _write_cs_list_file(csList_file, lines):
+    """CSリストファイルに書き込む内部メソッド"""
+    with file_write_lock:
+        with open(csList_file, 'w', encoding='utf-8') as file:
+            for line in lines:
+                file.write(line)
+
 # =======================
 # 実行部分
 # =======================
@@ -526,14 +528,13 @@ if __name__ == "__main__":
     file_write_lock = Lock()
     current_time = datetime.now().strftime('%Y%m%d_%H%M')
     SAVE_DIR = f'{current_time}_1DAY'
-    SAVE_DIR = '20250826_0924_1DAY'
+    # SAVE_DIR = '20250826_0924_1DAY'
     os.makedirs(SAVE_DIR, exist_ok=True)
     FAILURE_FLAG = True
     FAILURE_TIME = list(range(0, 25))
     
     run_multi_batch_parallel_failure_optimization(
-        n_trials=250, 
-        parallel_count=4, 
+        n_trials=300, 
+        parallel_count=1, 
         max_batch=8, 
-        random_phase_ratio=0.25
-    )
+        n_startup_trials=50)
