@@ -93,7 +93,7 @@ def run_parallel_emates_simulations(base_config, parallel_count=1):
     
     return overall_status
 
-def only_run_emates(worker_id=None):
+def only_run_emates(worker_id=None, HOUR=24):
     """
     単一のeMATESシミュレーションを実行する関数
     """
@@ -102,60 +102,134 @@ def only_run_emates(worker_id=None):
     else:
         paths = get_paths(worker_id)    
     shikata_wsl = convert_to_wsl_path(paths["shikata"])
-    HOUR = 24  # シミュレーション時間（時間単位）
-    TS_CALC = 3600 * HOUR * 1000  # 24時間シミュレーション
+    TS_CALC = 3600 * HOUR * 1000  # 25時間シミュレーション
     command_to_emates(shikata_wsl, TS_CALC, worker_id)
+    """
+       # シミュレーション実行
+# def command_to_emates(shikata_wsl, TS_CALC, worker_id):
+#         # 実行コマンド
+#     if platform.system() == "Linux":
+#         wsl_command = f'/home/oums/Emates/eMATES_2308/solver/advmates-calc -e 0 ' \
+#                         f'-d {shikata_wsl} -s ' \
+#                         f'--no-generate-random-vehicle -no-input-signal -r 1 -t {TS_CALC}'
+        
+#             # 開始時刻を記録
+#         start_time = time.time()
+#         # WSLでwsl_commandを実行
+#         with subprocess.Popen(wsl_command.split(), 
+#                             stdout=subprocess.PIPE, 
+#                             stderr=subprocess.PIPE, 
+#                             text=True, 
+#                             bufsize=1, 
+#                             universal_newlines=True) as proc:
+#                         # 標準出力をリアルタイムで読み込む
+#             def _log_worker_output(proc):
+#                 # プロセスの終了を待つ
+#                 proc.wait()
+#                 status = proc.returncode
+                
+#                 # エラー出力を読み込む
+#                 stderr_output = proc.stderr.read()
+                
+#                 # 終了処理
+#                 elapsed_time = time.time() - start_time
+#                 if status != 0:
+#                     logging.error(f"ワーカー {worker_id} のシミュレーション失敗 (所要時間: {elapsed_time:.1f}秒)")
+#                     logging.error(f"エラー内容: {stderr_output}")
+#                     return status
+#                 else:
+#                     logging.info(f"ワーカー {worker_id} のシミュレーション完了 (所要時間: {elapsed_time:.1f}秒)")
+#                     return 0
+#             status = _log_worker_output(proc)
 
-   # シミュレーション実行
+    # elif platform.system() == "Windows":
+    #     wsl_command = f'/home/tsato-cnlab/Emates/eMATES_2308/solver/advmates-calc -e 0 ' \
+    #               f'-d {shikata_wsl} -s ' \
+    #               f'--no-generate-random-vehicle -no-input-signal -r 1 -t {TS_CALC}'
+    #     # 開始時刻を記録
+    #     start_time = time.time()
+    #     # WSLでwsl_commandを実行
+    #     with subprocess.Popen(['wsl'] + wsl_command.split(),
+    #                            stdout=subprocess.PIPE,
+    #                            stderr=subprocess.PIPE,
+    #                            text=True,
+    #                            bufsize=1,
+    #                            universal_newlines=True) as proc:
+    #         # 標準出力をリアルタイムで読み込む
+    #         status = _log_worker_output(proc)
+    """
+
+
 def command_to_emates(shikata_wsl, TS_CALC, worker_id):
-        # 実行コマンド
+    """シミュレーションを実行し、その成否と所要時間を返す"""
+        # 開始時刻を記録
+    start_time = time.time()
+    # 実行コマンドの定義 (変更なし)
     if platform.system() == "Linux":
         wsl_command = f'/home/oums/Emates/eMATES_2308/solver/advmates-calc -e 0 ' \
                         f'-d {shikata_wsl} -s ' \
                         f'--no-generate-random-vehicle -no-input-signal -r 1 -t {TS_CALC}'
-        
-            # 開始時刻を記録
-        start_time = time.time()
-        # WSLでwsl_commandを実行
-        with subprocess.Popen(wsl_command.split(), 
-                            stdout=subprocess.PIPE, 
-                            stderr=subprocess.PIPE, 
-                            text=True, 
-                            bufsize=1, 
-                            universal_newlines=True) as proc:
-                        # 標準出力をリアルタイムで読み込む
-            def _log_worker_output(proc):
-                # プロセスの終了を待つ
-                proc.wait()
-                status = proc.returncode
-                
-                # エラー出力を読み込む
-                stderr_output = proc.stderr.read()
-                
-                # 終了処理
-                elapsed_time = time.time() - start_time
-                if status != 0:
-                    logging.error(f"ワーカー {worker_id} のシミュレーション失敗 (所要時間: {elapsed_time:.1f}秒)")
-                    logging.error(f"エラー内容: {stderr_output}")
-                    return status
-                else:
-                    logging.info(f"ワーカー {worker_id} のシミュレーション完了 (所要時間: {elapsed_time:.1f}秒)")
-                    return 0
-            status = _log_worker_output(proc)
+        try:
+            # ★★★ ここからが修正箇所 ★★★
+            # Popenの代わりにrunを使い、プロセスの終了まで待つ
+            result = subprocess.run(
+                wsl_command.split(),
+                capture_output=True,  # stdoutとstderrを自動で読み取り、デッドロックを回避
+                text=True,            # 出力をテキストとして扱う
+                check=True            # 戻り値が0以外なら例外を発生させる
+            )
+            
+            # 正常に終了した場合
+            elapsed_time = time.time() - start_time
+            logging.info(f"ワーカー {worker_id} のシミュレーション完了 (所要時間: {elapsed_time:.1f}秒)")
+            # logging.debug(f"Worker {worker_id} stdout: {result.stdout}") # 必要なら標準出力をログに記録
+            return 0
 
-    elif platform.system() == "Windows":
+        except subprocess.CalledProcessError as e:
+            # エラーで終了した場合 (check=Trueにより自動でここに来る)
+            elapsed_time = time.time() - start_time
+            logging.error(f"ワーカー {worker_id} のシミュレーション失敗 (所要時間: {elapsed_time:.1f}秒)")
+            # e.stderr にエラー出力が格納されている
+            logging.error(f"エラー内容: {e.stderr}")
+            return e.returncode # エラーコードを返す
+
+        except FileNotFoundError:
+            # コマンドが見つからない場合
+            elapsed_time = time.time() - start_time
+            logging.error(f"ワーカー {worker_id} でコマンドが見つかりません: advmates-calc (所要時間: {elapsed_time:.1f}秒)")
+            return -1
+        
+    elif platform.system() == "Windows":  # Windowsの場合
         wsl_command = f'/home/tsato-cnlab/Emates/eMATES_2308/solver/advmates-calc -e 0 ' \
-                  f'-d {shikata_wsl} -s ' \
-                  f'--no-generate-random-vehicle -no-input-signal -r 1 -t {TS_CALC}'
-        # 開始時刻を記録
-        start_time = time.time()
-        # WSLでwsl_commandを実行
-        with subprocess.Popen(['wsl'] + wsl_command.split(),
-                               stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE,
-                               text=True,
-                               bufsize=1,
-                               universal_newlines=True) as proc:
-            # 標準出力をリアルタイムで読み込む
-            status = _log_worker_output(proc)
+                      f'-d {shikata_wsl} -s ' \
+                      f'--no-generate-random-vehicle -no-input-signal -r 1 -t {TS_CALC}'
+        try:
+            # ★★★ ここからが修正箇所 ★★★
+            # Popenの代わりにrunを使い、プロセスの終了まで待つ
+            result = subprocess.run(['wsl', 'bash', '-c', wsl_command],
+                capture_output=True,  # stdoutとstderrを自動で読み取り、デッドロックを回避
+                text=True,            # 出力をテキストとして扱う
+                check=True            # 戻り値が0以外なら例外を発生させる
+            )
+            
+            # 正常に終了した場合
+            elapsed_time = time.time() - start_time
+            logging.info(f"ワーカー {worker_id} のシミュレーション完了 (所要時間: {elapsed_time:.1f}秒)")
+            # logging.debug(f"Worker {worker_id} stdout: {result.stdout}") # 必要なら標準出力をログに記録
+            return 0
+
+        except subprocess.CalledProcessError as e:
+            # エラーで終了した場合 (check=Trueにより自動でここに来る)
+            elapsed_time = time.time() - start_time
+            logging.error(f"ワーカー {worker_id} のシミュレーション失敗 (所要時間: {elapsed_time:.1f}秒)")
+            # e.stderr にエラー出力が格納されている
+            logging.error(f"エラー内容: {e.stderr}")
+            return e.returncode # エラーコードを返す
+
+        except FileNotFoundError:
+            # コマンドが見つからない場合
+            elapsed_time = time.time() - start_time
+            logging.error(f"ワーカー {worker_id} でコマンドが見つかりません: advmates-calc (所要時間: {elapsed_time:.1f}秒)")
+            return -1
+
 

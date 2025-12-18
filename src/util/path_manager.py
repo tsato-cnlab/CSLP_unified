@@ -10,7 +10,11 @@ def get_paths(worker_id=None):
     # ✅ WSL2環境の判定とベースパスの設定
     if platform.system() == "Linux" and "microsoft" in platform.uname().release.lower():
         # WSL2環境
-        base = "/home/tsato-cnlab/Emates"
+        # base = "/home/tsato-cnlab/Emates"
+        base = "/home/oums/Emates"
+        path_sep = "/"
+    if platform.system() == "Linux":
+        base = "/home/oums/Emates"
         path_sep = "/"
     else:
         # Windows環境

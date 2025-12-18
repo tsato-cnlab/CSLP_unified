@@ -14,18 +14,25 @@ warnings.filterwarnings('ignore')
 import optuna
 import optuna.visualization as vis
 
+# プロジェクトルートの設定
+project_root = os.path.abspath(os.path.join(os.getcwd()))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+print(f"プロジェクトルート: {project_root}")
+from src.util.path_manager import get_paths
+
 # 修正されたplot_waiting_times関数（軸範囲を指定可能）
 def plot_waiting_times_unified(result_file, title, xlim_range, ylim_range, bins=20):
     waiting_times_minute = get_waiting_times(result_file)
-    
-    plt.hist(waiting_times_minute, bins=bins, range=xlim_range, 
+
+    plt.hist(waiting_times_minute, bins=bins, range=xlim_range,
              color='skyblue', edgecolor='black', alpha=0.7)
-    
+
     # 95パーセンタイルの表示
     p95 = np.percentile(waiting_times_minute, 95)
-    plt.axvline(p95, color='red', linestyle='dashed', linewidth=2, 
+    plt.axvline(p95, color='red', linestyle='dashed', linewidth=2,
                 label=f'95%tile: {p95:.1f}分')
-    
+
     plt.title(title, fontsize=14)
     plt.xlabel('待ち時間 (分)', fontsize=12)
     plt.ylabel('台数', fontsize=12)
@@ -33,7 +40,7 @@ def plot_waiting_times_unified(result_file, title, xlim_range, ylim_range, bins=
     plt.ylim(ylim_range)
     plt.grid(axis='y', alpha=0.3)
     plt.legend()
-    
+
     # 統計情報を表示
     mean_wait = np.mean(waiting_times_minute)
     total_wait = np.sum(waiting_times_minute)
@@ -65,7 +72,7 @@ def plot_kwh_timeseries(result_file, case):
     # ポート数が0より大きく、時系列データに存在する充電ステーションのみ抽出
     valid_cs = cs_df[(cs_df['ports'] > 0)]
     plt.figure(figsize=(12, 6))
-    # 
+    #
     # 累積和を計算
     cumulative_kwh = timeseries_kw.cumsum() / 60
     plt.subplot(2, 1, 1)
@@ -79,7 +86,7 @@ def plot_kwh_timeseries(result_file, case):
     plt.show()
 
 
-    
+
 def crt_cost_df(base_path):
     # 必要なインポートを事前に行う
     current_path = Path.cwd()
@@ -101,24 +108,24 @@ def crt_cost_df(base_path):
         try:
             file_path = f'{base_path}/{pkl_file}'
             total_costs, emates_result = evaluation_total_costs(file_path)
-            cs_config = emates_result['cs_config']
-            timeseries_kw = emates_result['time_series_kw']
-            
+            cs_config = emates_result.cs_config
+            timeseries_kw = emates_result.time_series_kw
+
             initial_costs = calc_initial_costs(cs_config, timeseries_kw)
             running_costs = calc_running_costs(cs_config, timeseries_kw)
-            _, transport_costs = calc_diff_trnsprt_costs(emates_result['vehicle_trip'])
+            _, transport_costs = calc_diff_trnsprt_costs(emates_result.vehicle_trip)
             total_kwh = timeseries_kw.sum().sum() / 60
 
             # 年間コストの割引計算
             running_costs_discounted = sum(
                 (running_costs / ((1 + DISCOUNT_RATE) ** i)) for i in range(1, YEAR + 1)
             )
-            
+
             # ユーザーコストの割引計算
             transport_costs_discounted = sum(
                 (transport_costs / ((1 + DISCOUNT_RATE) ** i)) for i in range(1, YEAR + 1)
             )
-            
+
             results_list.append({
                 'trial': pkl_file,
                 'initial_cost': initial_costs,
@@ -126,7 +133,7 @@ def crt_cost_df(base_path):
                 'user_cost': transport_costs_discounted,
                 'total_kwh': total_kwh
             })
-                
+
         except Exception as e:
             print(f"Error processing {pkl_file}: {e}")
 
@@ -168,10 +175,10 @@ def plot_costs(best_trial_df, case):
     colors_pos = ['skyblue', 'orange', 'green']
     for i, (cost, label) in enumerate(zip(positive_costs, labels)):
         if cost > 0:
-            plt.bar(x, cost, bottom=bottom_pos, width=width, label=label, 
+            plt.bar(x, cost, bottom=bottom_pos, width=width, label=label,
                     color=colors_pos[i], alpha=0.7)
             # 値をバーの中央に表示
-            plt.text(0, bottom_pos + cost/2, f'{cost:.0f}', 
+            plt.text(0, bottom_pos + cost/2, f'{cost:.0f}',
                     ha='center', va='center', fontweight='bold')
             bottom_pos += cost
 
@@ -179,17 +186,17 @@ def plot_costs(best_trial_df, case):
     bottom_neg = 0
     for i, (cost, label) in enumerate(zip(negative_costs, labels)):
         if cost < 0:
-            plt.bar(x, cost, bottom=bottom_neg, width=width, label=label, 
+            plt.bar(x, cost, bottom=bottom_neg, width=width, label=label,
                     color=colors_pos[i], alpha=0.7)
             # 値をバーの中央に表示
-            plt.text(0, bottom_neg + cost/2, f'{cost:.0f}', 
+            plt.text(0, bottom_neg + cost/2, f'{cost:.0f}',
                     ha='center', va='center', fontweight='bold')
             bottom_neg += cost
 
     # 総コストを示す線
-    plt.axhline(y=total_cost, color='red', linestyle='--', linewidth=2, 
+    plt.axhline(y=total_cost, color='red', linestyle='--', linewidth=2,
                 label=f'総コスト: {total_cost:.0f}万円')
-    plt.text(0.3, total_cost, f'総コスト\n{total_cost:.0f}万円', 
+    plt.text(0.3, total_cost, f'総コスト\n{total_cost:.0f}万円',
             va='center', ha='left', fontweight='bold', color='red')
 
     plt.title(f'コスト内訳({case})', fontsize=14)
@@ -201,7 +208,7 @@ def plot_costs(best_trial_df, case):
     plt.grid(axis='y', alpha=0.3)
     plt.tight_layout()
     # plt.show()
-    
+
 def plot_optimization_history(STUDY_NAME, db_path):
     # STUDY_NAME = "cs_optimization"
     STORAGE_URL = f"sqlite:///{db_path}"
@@ -221,18 +228,20 @@ def plot_optimization_history(STUDY_NAME, db_path):
 
     # グラフを表示 (Jupyter NotebookやGoogle Colabなどではこれだけで表示されます)
     fig.show()
-    
+
 def plot_network_structure(result_path:Path, title= '充電ステーション候補地'):
     # データの読み込み
-    map_path = r'\\wsl.localhost\Ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\simple_shikata\mapPosition.txt'
+    base_path = get_paths()
+    shikata_path = base_path['shikata']
+    map_path = shikata_path + '/mapPosition.txt'
     map_df = pd.read_csv(map_path, sep=',', header=None, names=['ID', 'X', 'Y', 'Z'])
 
-    network_path = r'\\wsl.localhost\Ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\simple_shikata\network.txt'
+    network_path = shikata_path + '/network.txt'
     network_df = pd.read_csv(network_path, sep=',', header=None, names=['from', 'link', 'to_1', 'to_2', 'to_3', 'to_4'])
-    
-    cslist_path = r'\\wsl.localhost\Ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\simple_shikata\csList.txt'
+
+    cslist_path = shikata_path + '/csList.txt'
     cslist_df = pd.read_csv(cslist_path, sep=',', header=None, names=['ID', 'port', 'kw'])
-    
+
     # ネットワーク図の可視化
     # plt.figure(figsize=(15, 12))
 
@@ -242,46 +251,46 @@ def plot_network_structure(result_path:Path, title= '充電ステーション候
     # リンクの描画
     for _, row in network_df.iterrows():
         from_node = map_df[map_df['ID'] == row['from']]
-        
+
         # to_1からto_4までの接続先を描画
         for to_col in ['to_1', 'to_2', 'to_3', 'to_4']:
             if pd.notna(row[to_col]) and row[to_col] != 0:
                 to_node = map_df[map_df['ID'] == row[to_col]]
-                
+
                 if not from_node.empty and not to_node.empty:
-                    plt.plot([from_node['X'].iloc[0], to_node['X'].iloc[0]], 
-                            [from_node['Y'].iloc[0], to_node['Y'].iloc[0]], 
+                    plt.plot([from_node['X'].iloc[0], to_node['X'].iloc[0]],
+                            [from_node['Y'].iloc[0], to_node['Y'].iloc[0]],
                             'gray', alpha=0.3, linewidth=0.3)
 
     # 充電ステーション候補地を表示
     csids = cslist_df['ID']
     charging_stations = map_df[map_df['ID'].isin(csids)]
-    plt.scatter(charging_stations['X'], charging_stations['Y'], c='gray', 
+    plt.scatter(charging_stations['X'], charging_stations['Y'], c='gray',
                s=100, label='充電ステーション候補地')
-    
+
     def _plot_charging_stations(result_path, title, map_df):
     # 充電ステーションの実際の配置を表示（Optunaで採用された配置）
-    
+
         if result_path:
             with open(result_path, 'rb') as f:
                 data = pickle.load(f)
             cs_config = data['cs_config']
-            
+
             # 充電ステーション設定データフレーム作成
             cs_df = pd.DataFrame({
                 'csids': cs_config['csids'],
                 'ports': cs_config['ports'],
                 'cap_kw': cs_config['cap_kw']
             })
-            
+
             # ポート数が0より大きい充電ステーションのみを表示
             setting_cs = cs_df[cs_df['ports'] > 0]
-            
+
             if len(setting_cs) > 0:
                 # 座標情報をマージ
-                setting_cs_with_pos = pd.merge(setting_cs, map_df, 
+                setting_cs_with_pos = pd.merge(setting_cs, map_df,
                                             left_on='csids', right_on='ID', how='inner')
-                
+
                 # カラーマップの設定（充電出力用）
                 from matplotlib import cm
                 colors = setting_cs_with_pos['cap_kw']
@@ -292,22 +301,22 @@ def plot_network_structure(result_path:Path, title= '充電ステーション候
                 colors_discrete = plt.cm.viridis(np.linspace(0, 1, len(unique_kw)))
                 color_map = {kw: colors_discrete[i] for i, kw in enumerate(unique_kw)}
                 colors = [color_map[kw] for kw in setting_cs_with_pos['cap_kw']]
-                
+
                 # 散布図の作成（離散色で）
-                scatter = plt.scatter(setting_cs_with_pos['X'], setting_cs_with_pos['Y'], 
-                                    c=colors, s=sizes, alpha=1.0, 
+                scatter = plt.scatter(setting_cs_with_pos['X'], setting_cs_with_pos['Y'],
+                                    c=colors, s=sizes, alpha=1.0,
                                     edgecolors='black', linewidths=1, label='設置充電ステーション')
-                
+
                 # 離散カラーバーの作成
                 import matplotlib.patches as mpatches
-                legend_elements = [mpatches.Patch(color=color_map[kw], label=f'{kw}kW') 
+                legend_elements = [mpatches.Patch(color=color_map[kw], label=f'{kw}kW')
                                 for kw in unique_kw]
                 plt.legend(handles=legend_elements, loc='upper left', title='充電出力')
-                
+
                 # 充電ステーション情報を表示
                 for _, row in setting_cs_with_pos.iterrows():
-                    plt.annotate(f'ID:{int(row["csids"]) % 900000}\n{int(row["ports"])}口\n{int(row["cap_kw"])}kW', 
-                            (row['X'], row['Y']), 
+                    plt.annotate(f'ID:{int(row["csids"]) % 900000}\n{int(row["ports"])}口\n{int(row["cap_kw"])}kW',
+                            (row['X'], row['Y']),
                             xytext=(5, 5), textcoords='offset points',
                             fontsize=10, ha='left', va='bottom',
                             bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
@@ -317,13 +326,13 @@ def plot_network_structure(result_path:Path, title= '充電ステーション候
         plt.ylabel('Y座標', fontsize=12)
         plt.grid(True, alpha=0.3)
         plt.legend(loc='upper right')
-        
+
         plt.axis('equal')
         plt.tight_layout()
         plt.show()
 
     _plot_charging_stations(result_path, title, map_df)
-    
+
 def get_total_kw(result_path):
     if result_path:
         with open(result_path, 'rb') as f:
@@ -360,4 +369,4 @@ def aggregate_results(result_file):
         "95percentileWait": waiting_times_95,
         "TotalTripTime": total_trip_time_normal
     }
-    
+

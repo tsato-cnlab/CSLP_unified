@@ -1,9 +1,21 @@
+# Python関連
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+
+# 仮想環境（これが最大の原因！）
+.venv/
+venv_emates/
 env/
+.uv/
+
+# 出力・データ（大きいので除外）
+output/
+optimization_results/
+
+# ビルド・テスト関連
 pip-log.txt
 pip-delete-this-directory.txt
 .tox/
@@ -14,6 +26,8 @@ nosetests.xml
 coverage.xml
 *.cover
 *.log
+
+# Git・IDE
 .git
 .mypy_cache
 .pytest_cache
@@ -22,3 +36,6 @@ coverage.xml
 .idea/
 *.db-journal
 .DS_Store
+
+# レガシーコード
+legacy/

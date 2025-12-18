@@ -116,13 +116,13 @@ class ParallelEnvironment:
 
     def update_shikata_dir(self):
         # 各ワーカー用にディレクトリをコピー
-        if self.parallel_count is None or self.parallel_count == 1:
+        if self.parallel_count is None:
             self.target_dir = self.orig_dir
             self.update_cs_list()
         elif self.batch_size is not None:
             # 組み合わせごとに8個のWorkerを固定割り当て
             # 組み合わせ1: Worker 1-8, 組み合わせ2: Worker 9-16, 組み合わせ3: Worker 17-24, 組み合わせ4: Worker 25-32
-            batch_size = self.batch_size if self.batch_size is not None else 8
+            batch_size = self.batch_size # 1組み合わせあたりのWorker数
             total_workers = self.parallel_count * batch_size
             
             for combination_id in range(self.parallel_count):  # 組み合わせ数分ループ（0,1,2,3）
