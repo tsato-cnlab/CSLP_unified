@@ -61,8 +61,13 @@ def test_actual_simulation_result(result_file: str):
 
     print(f"結果オブジェクトの型: {type(emates_result)}")
 
+    # 辞書型の場合はキーを表示
+    if isinstance(emates_result, dict):
+        print(f"\n利用可能なキー:")
+        for key in emates_result.keys():
+            print(f"  - {key}")
     # 属性一覧
-    if hasattr(emates_result, '__dict__'):
+    elif hasattr(emates_result, '__dict__'):
         print(f"\n利用可能な属性:")
         for attr in dir(emates_result):
             if not attr.startswith('_'):
@@ -70,7 +75,11 @@ def test_actual_simulation_result(result_file: str):
 
     # CS設定
     try:
-        cs_config = emates_result.cs_config
+        # 辞書型とオブジェクト型の両方に対応
+        if isinstance(emates_result, dict):
+            cs_config = emates_result.get('cs_config')
+        else:
+            cs_config = emates_result.cs_config
         print(f"\n📊 CS設定:")
         print(f"  CSIDリスト: {cs_config.get('csids', [])}")
         print(f"  ポート数: {cs_config.get('ports', [])}")
@@ -95,7 +104,11 @@ def test_actual_simulation_result(result_file: str):
 
     # 時系列データ
     try:
-        timeseries_kw = emates_result.time_series_kw
+        # 辞書型とオブジェクト型の両方に対応
+        if isinstance(emates_result, dict):
+            timeseries_kw = emates_result.get('time_series_kw')
+        else:
+            timeseries_kw = emates_result.time_series_kw
         print(f"\n📈 時系列データ:")
         print(f"  データ形状: {timeseries_kw.shape}")
         print(f"  タイムステップ数: {len(timeseries_kw)}")
@@ -114,7 +127,11 @@ def test_actual_simulation_result(result_file: str):
 
     # 車両トリップデータ
     try:
-        vehicle_trip = emates_result.vehicle_trip
+        # 辞書型とオブジェクト型の両方に対応
+        if isinstance(emates_result, dict):
+            vehicle_trip = emates_result.get('vehicle_trip')
+        else:
+            vehicle_trip = emates_result.vehicle_trip
         print(f"\n🚗 車両トリップデータ:")
         print(f"  総車両数: {len(vehicle_trip)}")
         print(f"  カラム: {list(vehicle_trip.columns)}")
@@ -316,6 +333,6 @@ if __name__ == "__main__":
         result_file = sys.argv[1]
     else:
         # デフォルトのファイルパス
-        result_file = "/srv/samba/share/output/unified_P10_P10/tiral_1_combo_1_failure_3.pkl"
+        result_file = "Z:\\output\\unified_P10_P10\\trial_1_combo_1_failure_3.pkl"
 
     test_actual_simulation_result(result_file)

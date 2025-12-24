@@ -1,5 +1,5 @@
 {
-  "save_dir_base": "/srv/samba/share/output",
+  "save_dir_base": "Z:\\output",
   "experiment_name": "unified",
   "t_hour": 26,
   "failure_weight": 0.1,
@@ -9,12 +9,12 @@
     "formula": "(1-P) * normal + P * failure",
     "description": "重み付き和（デフォルト）"
   },
-  "batch_size": 8,
+  "batch_size": 1,
   "outer_parallel": 8,
   "workers_per_trial": 9,
   "total_trials": 1000,
   "timeout": 86400,
-  "convergence_patience": 100,
+  "convergence_patience": 1000,
   "convergence_threshold": 0.001,
   "failure_flag": true,
   "failure_time": [
@@ -48,5 +48,5 @@
   ],
   "n_startup_trials": 50,
   "initial_cs_configs": null,
-  "initial_cs_config_file": null
+  "initial_cs_config_file":"data/initial_cs_configs.csv"
 }

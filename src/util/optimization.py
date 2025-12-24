@@ -332,7 +332,6 @@ def set_cs_placement(trial, worker_id = None) -> dict:
 # =========
 def create_failure_info_for_worker(cs_config: dict, failure_cs_index: int, worker_id: int, FAILURE_TIME = [12], file_write_lock = None) -> None:
     """指定されたワーカー用に故障情報を作成"""
-    print(f"🔧 故障情報作成開始: Worker{worker_id}, 故障CS={failure_cs_index}, 故障時間={FAILURE_TIME}")
 
     time_interval = 3600  # 1時間ごと
     max_time = max(FAILURE_TIME)* 3600  # 24時間
@@ -342,14 +341,11 @@ def create_failure_info_for_worker(cs_config: dict, failure_cs_index: int, worke
     paths = get_paths(worker_id)
     OPENDSS_PATH = f'{paths["result"]}/opendss'
 
-    print(f"📁 保存先: {OPENDSS_PATH}")
-
     # opendssディレクトリが存在しない場合は作成
     os.makedirs(OPENDSS_PATH, exist_ok=True)
 
     # CS設定の確認
     installed_cs = [(i, csid, ports) for i, (csid, ports) in enumerate(zip(cs_config['csids'], cs_config['ports'])) if ports > 0]
-    print(f"📊 設置CS: {len(installed_cs)}箇所 - {installed_cs}")
 
     var_names = ["Type", "Node", "Csid", "Chgrid", "kW_0min",
                 "kW_60min", "kW_120min", "Yen_0min", "Yen_60min", "Yen_120min"]
@@ -413,8 +409,6 @@ def create_failure_info_for_worker(cs_config: dict, failure_cs_index: int, worke
             csv_count += 1
         except Exception as e:
             print(f"❌ CSV保存エラー ({E_filename}): {e}")
-
-    print(f"✅ 故障情報作成完了: {csv_count}個のCSVファイルを作成しました")
 
 # 95パーセンタイル待ち時間の計算
 # ==========

@@ -221,7 +221,7 @@ class UnifiedOptimizationConfig:
     @classmethod
     def from_json(cls, path: Path) -> 'UnifiedOptimizationConfig':
         """JSONファイルから設定を読み込み"""
-        with open(path) as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
 
         # ObjectiveFunctionの復元

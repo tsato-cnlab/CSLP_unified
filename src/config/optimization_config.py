@@ -19,7 +19,7 @@ class OptimizationConfig:
     @classmethod
     def from_json(cls, path: Path) -> 'OptimizationConfig':
         """JSONファイルから設定を読み込み"""
-        with open(path) as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
         return cls(**data)
 
@@ -40,7 +40,7 @@ class FailureScenarioConfig:
     @classmethod
     def from_json(cls, path: Path) -> 'FailureScenarioConfig':
         """JSONファイルから設定を読み込み"""
-        with open(path) as f:
+        with open(path, encoding='utf-8') as f:
             data = json.load(f)
         return cls(**data)
 

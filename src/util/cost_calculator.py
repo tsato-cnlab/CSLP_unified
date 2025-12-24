@@ -39,9 +39,15 @@ def evaluation_total_costs(result_file: str) -> Tuple[float, dict]:
     with open(result_file, 'rb') as f:
         emates_result = pickle.load(f)
 
-    timeseries_kw = emates_result.time_series_kw
-    cs_config = emates_result.cs_config
-    vehicle_trip = emates_result.vehicle_trip
+    # 辞書型とオブジェクト型の両方に対応
+    if isinstance(emates_result, dict):
+        timeseries_kw = emates_result.get('time_series_kw')
+        cs_config = emates_result.get('cs_config')
+        vehicle_trip = emates_result.get('vehicle_trip')
+    else:
+        timeseries_kw = emates_result.time_series_kw
+        cs_config = emates_result.cs_config
+        vehicle_trip = emates_result.vehicle_trip
 
     # 各コストを計算
     initial_costs = calc_initial_costs(cs_config, timeseries_kw)
@@ -170,7 +176,11 @@ def calculate_95percentile_wait_time(result_file: str) -> float:
     with open(result_file, 'rb') as f:
         emates_result = pickle.load(f)
 
-    vehicle_trip = emates_result.vehicle_trip
+    # 辞書型とオブジェクト型の両方に対応
+    if isinstance(emates_result, dict):
+        vehicle_trip = emates_result.get('vehicle_trip')
+    else:
+        vehicle_trip = emates_result.vehicle_trip
 
     # 充電を行ったトリップのみを抽出
     charging_trip = vehicle_trip[vehicle_trip['startChargingTime'] != 0].copy()

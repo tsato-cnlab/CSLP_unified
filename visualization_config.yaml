@@ -1,0 +1,27 @@
+# 可視化設定ファイル
+# 各可視化のON/OFFを制御できます
+
+visualizers:
+  # Optuna最適化推移グラフ
+  optimization_history:
+    enabled: true
+
+  # 待ち時間ヒストグラム（単一ケース）
+  waiting_time_histogram:
+    enabled: true
+
+  # 待ち時間箱ひげ図（複数ケース比較用、複数ファイル指定時のみ動作）
+  waiting_time_boxplot:
+    enabled: true
+
+  # 充電/非充電車両の旅行時間比較
+  trip_time_comparison:
+    enabled: true
+
+  # 充電ステーション配置地図
+  cs_placement_map:
+    enabled: true
+
+  # 統計サマリー（テキストファイル）
+  results_summary:
+    enabled: true

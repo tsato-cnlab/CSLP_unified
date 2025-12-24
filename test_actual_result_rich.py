@@ -134,21 +134,72 @@ def test_actual_simulation_result(result_file: str):
         # 統計テーブル
         stats_table = Table(title="充電量統計", box=box.SIMPLE, show_header=True, header_style="bold blue")
         stats_table.add_column("CS", style="cyan")
+        stats_table.add_column("CS ID", style="dim", justify="center")
+        stats_table.add_column("ポート", style="blue", justify="center")
+        stats_table.add_column("容量(kW)", style="blue", justify="right")
         stats_table.add_column("合計 (kWh/日)", style="green", justify="right")
         stats_table.add_column("平均 (kW)", style="yellow", justify="right")
         stats_table.add_column("最大 (kW)", style="red", justify="right")
+        stats_table.add_column("利用率", style="magenta", justify="right")
 
-        for col_idx, col_name in enumerate(timeseries_kw.columns):
-            daily_kwh = timeseries_kw[col_name].sum() / 60
-            avg_kw = timeseries_kw[col_name].mean()
-            max_kw = timeseries_kw[col_name].max()
+        # timeseries_kwのカラム名からCSIDを抽出
+        # カラム名が "E900002" のような形式の場合
+        timeseries_csids = []
+        for col_name in timeseries_kw.columns:
+            # カラム名から数値部分を抽出（"E900002" -> 900002）
+            col_str = str(col_name)
+            if col_str.startswith('E'):
+                csid = int(col_str[1:])
+                timeseries_csids.append(csid)
+            else:
+                # 数値のみの場合
+                try:
+                    csid = int(col_str)
+                    timeseries_csids.append(csid)
+                except:
+                    timeseries_csids.append(None)
 
-            stats_table.add_row(
-                f"CS{col_idx}",
-                f"{daily_kwh:,.0f}",
-                f"{avg_kw:.1f}",
-                f"{max_kw:.1f}"
-            )
+        console.print(f"[dim]デバッグ: timeseries_kwのCS ID: {timeseries_csids}[/dim]")
+        console.print(f"[dim]デバッグ: active_csのCS ID: {[csid for csid, _, _ in active_cs]}[/dim]")
+
+        # active_csとtimeseries_kwを対応させる
+        for csid, port, cap in active_cs:
+            # timeseries_kwでこのCSIDに対応するカラムを探す
+            if csid in timeseries_csids:
+                col_idx = timeseries_csids.index(csid)
+                col_name = timeseries_kw.columns[col_idx]
+
+                daily_kwh = timeseries_kw[col_name].sum() / 60
+                avg_kw = timeseries_kw[col_name].mean()
+                max_kw = timeseries_kw[col_name].max()
+
+                # 利用率の計算
+                max_capacity = port * cap
+                ideal_daily_kwh = max_capacity * 24
+                utilization = (daily_kwh / ideal_daily_kwh * 100) if ideal_daily_kwh > 0 else 0
+
+                stats_table.add_row(
+                    f"CS{csid}",
+                    f"#{csid}",
+                    f"{port}",
+                    f"{cap}",
+                    f"{daily_kwh:,.0f}",
+                    f"{avg_kw:.1f}",
+                    f"{max_kw:.1f}",
+                    f"{utilization:.1f}%"
+                )
+            else:
+                # timeseries_kwにデータがない場合
+                stats_table.add_row(
+                    f"CS{csid}",
+                    f"#{csid}",
+                    f"{port}",
+                    f"{cap}",
+                    "[red]データなし[/red]",
+                    "[red]-[/red]",
+                    "[red]-[/red]",
+                    "[red]-[/red]"
+                )
 
         console.print()
         console.print(stats_table)
@@ -385,6 +436,6 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         result_file = sys.argv[1]
     else:
-        result_file = "/srv/samba/share/output/unified_P10_P10/trial_1_combo_1_normal.pkl"
+        result_file = "Z:\\output\\unified_P00_P00\\trial_496_combo_0_normal.pkl"
 
     test_actual_simulation_result(result_file)

@@ -144,16 +144,14 @@ def run_single_failure_scenario(task_data):
     """単一シナリオを実行（平常時・故障時共通、multiprocessing用）
 
     Args:
-        task_data: (cs_config, failure_cs_idx, trial_number, worker_id, save_dir, combination_id)
+        task_data: (cs_config, failure_cs_idx, trial_number, worker_id, save_dir, combination_id, config)
                   failure_cs_idx=Noneの場合は平常時、それ以外は故障時
+                  config: UnifiedOptimizationConfig 設定オブジェクト
 
     Returns:
         dict: 実行結果
     """
-    cs_config, failure_cs_idx, trial_number, worker_id, save_dir, combination_id = task_data
-
-    # CONFIGのNoneチェック
-    assert CONFIG is not None, "CONFIG is not initialized"
+    cs_config, failure_cs_idx, trial_number, worker_id, save_dir, combination_id, config = task_data
 
     # シナリオタイプを判定
     scenario_type = "正常ケース" if failure_cs_idx is None else f"故障CS{failure_cs_idx}"
@@ -182,16 +180,17 @@ def run_single_failure_scenario(task_data):
         # 故障情報作成（平常時はfailure_cs_idx=None、故障時は具体的なインデックス）
         create_failure_info_for_worker(
             cs_config, failure_cs_idx, worker_id,
-            FAILURE_TIME=CONFIG.failure_time,
+            FAILURE_TIME=config.failure_time,
             file_write_lock=file_write_lock
         )
+        print(f"✅ Worker{worker_id}: 故障情報作成完了")
 
         # CS設定書き込み
         csList_file = worker_paths["csList"]
         update_cs_list(cs_config, csList_file)
 
         # シミュレーション実行
-        only_run_emates(worker_id=worker_id, HOUR=CONFIG.t_hour)
+        only_run_emates(worker_id=worker_id, HOUR=config.t_hour)
 
         scenario_suffix = "normal" if failure_cs_idx is None else f"failure_{failure_cs_idx}"
         results_filename = f"trial_{trial_number}_combo_{combination_id}_{scenario_suffix}.pkl"
@@ -230,19 +229,18 @@ def run_single_failure_scenario(task_data):
         }
 
 
-def create_failure_scenario_parallel_safe(cs_config_dict, trial_number, combination_id):
+def create_failure_scenario_parallel_safe(cs_config_dict, trial_number, combination_id, config):
     """全故障シナリオを並列実行
 
     Args:
         cs_config_dict: CS設定辞書
         trial_number: トライアル番号
         combination_id: 組み合わせID
+        config: UnifiedOptimizationConfig 設定オブジェクト
 
     Returns:
         dict: 最悪ケースの結果
     """
-    # CONFIGのNoneチェック
-    assert CONFIG is not None, "CONFIG is not initialized"
     installed_cs_indices = [i for i, ports in enumerate(cs_config_dict['ports']) if ports > 0]
 
     if len(installed_cs_indices) == 0:
@@ -265,7 +263,7 @@ def create_failure_scenario_parallel_safe(cs_config_dict, trial_number, combinat
     for i, failure_cs_idx in enumerate(installed_cs_indices):
         worker_id = worker_start + (i % 8)
         task_data = (cs_config_dict, failure_cs_idx, trial_number, worker_id,
-                    str(CONFIG.save_dir), combination_id)
+                    str(config.save_dir), combination_id, config)
         task_data_list.append(task_data)
 
     # multiprocessingで並列実行
@@ -320,21 +318,19 @@ def create_failure_scenario_parallel_safe(cs_config_dict, trial_number, combinat
     }
 
 
-def evaluate_unified_objective(cs_config_dict, trial_number, combination_id):
+def evaluate_unified_objective(cs_config_dict, trial_number, combination_id, config):
     """統合目的関数を評価
 
     Args:
         cs_config_dict: CS設定辞書
         trial_number: トライアル番号
         combination_id: 組み合わせID
+        config: UnifiedOptimizationConfig 設定オブジェクト
 
     Returns:
         dict: 統合評価結果
     """
-    # CONFIGのNoneチェック
-    assert CONFIG is not None, "CONFIG is not initialized"
-
-    print(f"\n=== Trial {trial_number}: 統合評価開始 (P={CONFIG.failure_weight}) ===")
+    print(f"\n=== Trial {trial_number}: 統合評価開始 (P={config.failure_weight}) ===")
 
     # ========================================
     # Step 1: 平常時シナリオ実行
@@ -342,13 +338,13 @@ def evaluate_unified_objective(cs_config_dict, trial_number, combination_id):
     normal_cost = 0.0
     normal_result = None
 
-    if CONFIG.failure_weight < 1.0:  # P<1.0の場合のみ実行
+    if config.failure_weight < 1.0:  # P<1.0の場合のみ実行
         worker_id = combination_id * 9 + 1  # 平常時Worker
         print(f"📊 平常時シナリオ実行中... (Worker {worker_id})")
 
         # 平常時はfailure_cs_idx=None
         normal_task = (cs_config_dict, None, trial_number, worker_id,
-                      str(CONFIG.save_dir), combination_id)
+                      str(config.save_dir), combination_id, config)
         normal_result = run_single_failure_scenario(normal_task)
         normal_cost = normal_result['cost']
 
@@ -362,10 +358,10 @@ def evaluate_unified_objective(cs_config_dict, trial_number, combination_id):
     worst_failure_cost = 0.0
     failure_result = None
 
-    if CONFIG.failure_weight > 0.0:  # P>0.0の場合のみ実行
+    if config.failure_weight > 0.0:  # P>0.0の場合のみ実行
         print(f"🔥 故障シナリオ実行中...")
         failure_result = create_failure_scenario_parallel_safe(
-            cs_config_dict, trial_number, combination_id
+            cs_config_dict, trial_number, combination_id, config
         )
         worst_failure_cost = failure_result['worst_cost']
         print(f"✅ ワースト故障コスト: {worst_failure_cost:.2f}万円")
@@ -380,12 +376,12 @@ def evaluate_unified_objective(cs_config_dict, trial_number, combination_id):
     # ========================================
     # Step 3: 統合コスト計算（カスタム目的関数を使用）
     # ========================================
-    unified_cost = CONFIG.calculate_objective(normal_cost, worst_failure_cost) # type: ignore
+    unified_cost = config.calculate_objective(normal_cost, worst_failure_cost)
 
     print(f"📊 統合評価結果:")
-    print(f"   目的関数: {CONFIG.objective_function.name}") # pyright: ignore[reportOptionalMemberAccess]
-    print(f"   平常時コスト: {normal_cost:.2f}万円 (重み: {CONFIG.normal_weight:.2f})")
-    print(f"   故障時コスト: {worst_failure_cost:.2f}万円 (重み: {CONFIG.failure_weight:.2f})")
+    print(f"   目的関数: {config.objective_function.name}")
+    print(f"   平常時コスト: {normal_cost:.2f}万円 (重み: {config.normal_weight:.2f})")
+    print(f"   故障時コスト: {worst_failure_cost:.2f}万円 (重み: {config.failure_weight:.2f})")
     print(f"   統合コスト: {unified_cost:.2f}万円")
 
     return {
@@ -460,44 +456,45 @@ def run_parallel_optimization_batch_unified(study, outer_parallel):
     print(f"\n⚡ {outer_parallel}並列で統合評価開始...")
 
     cpu_cores = os.cpu_count()
-    optimal_outer_processes = min(outer_parallel, cpu_cores // 9 if cpu_cores else 1)
-    print(f"🖥️  CPU情報: {cpu_cores}コア, outer_parallel数: {optimal_outer_processes}")
+    # optimal_outer_processes = min(outer_parallel, cpu_cores // 9 if cpu_cores else 1)
+    optimal_outer_processes = outer_parallel  # CPUコア数制限を外す
+    print(f"🖥️  CPU情報: {cpu_cores}コア, outer_parallel数: {outer_parallel}")
 
     batch_results = []
 
     if outer_parallel == 1:
         # 単一トライアルは順次処理
-        for i, (trial, config) in enumerate(zip(batch_trials, batch_configs)):
+        for i, (trial, cs_config) in enumerate(zip(batch_trials, batch_configs)):
             print(f"\n--- トライアル {i+1}/{len(batch_trials)} ---")
-            result = evaluate_unified_objective(config, trial.number, i)
-            batch_results.append((trial, config, result))
+            result = evaluate_unified_objective(cs_config, trial.number, i, CONFIG)
+            batch_results.append((trial, cs_config, result))
     else:
         # 並列処理
         with concurrent.futures.ProcessPoolExecutor(max_workers=optimal_outer_processes) as executor:
             future_to_data = {}
 
-            for i, (trial, config) in enumerate(zip(batch_trials, batch_configs)):
+            for i, (trial, cs_config) in enumerate(zip(batch_trials, batch_configs)):
                 future = executor.submit(
                     evaluate_unified_objective,
-                    config, trial.number, i
+                    cs_config, trial.number, i, CONFIG
                 )
-                future_to_data[future] = (trial, config, i)
+                future_to_data[future] = (trial, cs_config, i)
 
             # 結果を収集
             print(f"📊 {len(future_to_data)}個のfutureを待機中...")
 
             for future in concurrent.futures.as_completed(future_to_data, timeout=3600):
-                trial, config, combination_id = future_to_data[future]
+                trial, cs_config, combination_id = future_to_data[future]
                 try:
                     result = future.result(timeout=600)
-                    batch_results.append((trial, config, result))
+                    batch_results.append((trial, cs_config, result))
                     print(f"✅ Trial {trial.number} (組み合わせ{combination_id}) 完了: "
                           f"統合コスト={result['unified_cost']:.2f}万円")
                 except Exception as e:
                     print(f"❌ Trial {trial.number} (組み合わせ{combination_id}) エラー: {e}")
                     import traceback
                     traceback.print_exc()
-                    batch_results.append((trial, config, {
+                    batch_results.append((trial, cs_config, {
                         'trial_number': trial.number,
                         'unified_cost': float('inf'),
                         'normal_cost': float('inf'),
@@ -632,13 +629,19 @@ def run_optimization_with_unified_objective(study, config: UnifiedOptimizationCo
     print(f"🎉 統合最適化完了: {len(study.trials)}トライアル実行済み")
 
 
-def load_config_from_args() -> UnifiedOptimizationConfig:
-    """コマンドライン引数から設定を読み込み"""
+def load_config_from_args() -> tuple[UnifiedOptimizationConfig, bool]:
+    """コマンドライン引数から設定を読み込み
+
+    Returns:
+        tuple: (設定オブジェクト, 可視化を実行するかどうか)
+    """
     parser = argparse.ArgumentParser(description="統合最適化実行")
     parser.add_argument("--config", type=str, required=True,
                        help="設定JSONファイルパス")
     parser.add_argument("--resume", action="store_true",
                        help="既存のstudyから継続実行")
+    parser.add_argument("--no-visualize", action="store_true",
+                       help="最適化完了後の可視化をスキップ")
 
     args = parser.parse_args()
 
@@ -649,7 +652,7 @@ def load_config_from_args() -> UnifiedOptimizationConfig:
     config = UnifiedOptimizationConfig.from_json(config_path)
     print(f"✅ 設定ファイルを読み込みました: {config_path}")
 
-    return config
+    return config, not args.no_visualize
 
 
 def print_config_summary(config: UnifiedOptimizationConfig):
@@ -683,7 +686,7 @@ if __name__ == "__main__":
     print("\n🚀 統合最適化システム起動")
 
     # 設定読み込み
-    config = load_config_from_args()
+    config, run_visualization = load_config_from_args()
     print_config_summary(config)
 
     # グローバル設定（multiprocessing用）
@@ -813,6 +816,20 @@ if __name__ == "__main__":
         print("\n🧹 クリーンアップ実行中...")
         cleanup_worker_environments()
         print("✅ クリーンアップ完了")
+
+    # 可視化実行
+    if run_visualization:
+        try:
+            from src.util.visualize_results import generate_results_report
+            print("\n📊 可視化レポート生成中...")
+            generate_results_report(
+                result_dir=config.save_dir,
+                study_name=study_name,
+            )
+        except Exception as viz_error:
+            print(f"⚠️ 可視化エラー（スキップ）: {viz_error}")
+    else:
+        print("\n⏭️ 可視化はスキップされました（--no-visualize）")
 
     print(f"\n{'='*60}")
     print("👋 統合最適化システム終了")
