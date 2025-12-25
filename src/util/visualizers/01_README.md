@@ -29,7 +29,7 @@ uv run python -m src.util.visualize_results -d "Z:\output\unified_P00_P00" --leg
 ## アーキテクチャ
 
 ```mermaid
-flowchart TB
+flowchart TD
     subgraph Entry["エントリーポイント"]
         CLI["visualize_results.py"]
     end

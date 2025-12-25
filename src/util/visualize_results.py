@@ -697,134 +697,310 @@ def run_visualizers_from_config(
             console.print(f"[yellow]⚠️ {visualizer.name} でエラー: {e}[/yellow]")
 
 
+def compare_scenarios(
+    result_dirs: list[Path],
+    output_dir: Path,
+    save_png: bool = True,
+    save_html: bool = True,
+) -> None:
+    """複数シナリオを比較可視化
+
+    Args:
+        result_dirs: 比較対象のディレクトリリスト
+        output_dir: 出力先ディレクトリ
+        save_png: PNGを保存するか
+        save_html: HTMLを保存するか
+    """
+    from src.util.scenario_compare import ScenarioComparator
+    from src.util.visualizers.cost_comparison import (
+        plot_cost_comparison_boxplot,
+        plot_cost_breakdown_comparison,
+    )
+    from src.util.visualizers.wait_time_comparison import (
+        plot_wait_time_comparison_boxplot,
+    )
+
+    console.print()
+    console.rule("[bold cyan]シナリオ間比較可視化[/bold cyan]", style="cyan")
+    console.print()
+
+    # ディレクトリ一覧表示
+    table = Table(title="比較対象ディレクトリ", box=box.ROUNDED)
+    table.add_column("No.", style="dim")
+    table.add_column("ディレクトリ", style="cyan")
+    for i, d in enumerate(result_dirs, 1):
+        table.add_row(str(i), str(d.name))
+    console.print(table)
+    console.print()
+
+    # 出力ディレクトリ作成
+    output_dir.mkdir(parents=True, exist_ok=True)
+    console.print(f"[cyan]📁 出力先: {output_dir}[/cyan]")
+    console.print()
+
+    # 結果収集
+    console.print("[yellow]📊 結果を収集中...[/yellow]")
+    comparator = ScenarioComparator(result_dirs)
+    comparator.collect_all_results()
+
+    n_p_values = len(comparator.p_value_results)
+    n_total_scenarios = sum(
+        1 + len(pv.failure_results)
+        for pv in comparator.p_value_results
+        if pv.normal_result
+    )
+    console.print(f"[green]✅ {n_p_values}個のP値、計{n_total_scenarios}シナリオを収集[/green]")
+    console.print()
+
+    # コスト比較
+    console.print("[yellow]📈 コスト比較を生成中...[/yellow]")
+    plot_cost_comparison_boxplot(comparator, output_dir, save_png, save_html)
+    plot_cost_breakdown_comparison(comparator, output_dir)
+
+    # 待ち時間比較
+    console.print("[yellow]⏱️ 待ち時間比較を生成中...[/yellow]")
+    plot_wait_time_comparison_boxplot(comparator, output_dir, save_png, save_html)
+
+    console.print()
+    console.print(Panel("[bold green]✨ シナリオ比較完了 ✨[/bold green]", border_style="green"))
+    console.print()
+
+
 def main():
-    """コマンドラインエントリポイント"""
-    parser = argparse.ArgumentParser(description="最適化結果可視化ツール")
-    parser.add_argument(
+    """コマンドラインエントリポイント（サブコマンド対応）"""
+    parser = argparse.ArgumentParser(
+        description="最適化結果可視化ツール",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  # 単体可視化（プラグインモード）
+  uv run python -m src.util.visualize_results single -d "Z:\\output\\unified_P50"
+
+  # 単体可視化（レガシーモード）
+  uv run python -m src.util.visualize_results single -d "Z:\\output\\unified_P50" --legacy
+
+  # シナリオ比較（複数ディレクトリ指定）
+  uv run python -m src.util.visualize_results compare -d "Z:\\output\\unified_P00" -d "Z:\\output\\unified_P50" -o "Z:\\output\\comparison"
+
+  # シナリオ比較（パターンマッチ）
+  uv run python -m src.util.visualize_results compare --pattern "Z:\\output\\unified_P*" -o "Z:\\output\\comparison"
+""",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="サブコマンド")
+
+    # --- single サブコマンド（単体可視化） ---
+    single_parser = subparsers.add_parser(
+        "single",
+        help="単一ディレクトリの可視化",
+        aliases=["s"],
+    )
+    single_parser.add_argument(
         "--result-dir", "-d",
         type=str,
         required=True,
         help="結果ディレクトリのパス"
     )
-    parser.add_argument(
+    single_parser.add_argument(
         "--study-name", "-s",
         type=str,
         default=None,
         help="Optuna Study名（省略時は自動推測）"
     )
-    parser.add_argument(
+    single_parser.add_argument(
         "--result-file", "-f",
         type=str,
         default=None,
         help="対象の結果pklファイル（省略時は最適トライアルの結果）"
     )
-    parser.add_argument(
+    single_parser.add_argument(
         "--config", "-c",
         type=str,
         default=None,
         help="可視化設定ファイルパス（省略時はデフォルト）"
     )
-    parser.add_argument(
+    single_parser.add_argument(
         "--legacy",
         action="store_true",
         help="レガシーモード（プラグインを使用しない）"
     )
 
+    # --- compare サブコマンド（シナリオ比較） ---
+    compare_parser = subparsers.add_parser(
+        "compare",
+        help="複数シナリオの比較可視化",
+        aliases=["c"],
+    )
+    compare_parser.add_argument(
+        "--result-dir", "-d",
+        type=str,
+        action="append",
+        dest="result_dirs",
+        help="比較対象ディレクトリ（複数指定可）"
+    )
+    compare_parser.add_argument(
+        "--pattern", "-p",
+        type=str,
+        default=None,
+        help="ディレクトリ検索パターン（例: Z:\\output\\unified_P*）"
+    )
+    compare_parser.add_argument(
+        "--output", "-o",
+        type=str,
+        required=True,
+        help="出力先ディレクトリ"
+    )
+    compare_parser.add_argument(
+        "--no-png",
+        action="store_true",
+        help="PNG出力を無効化"
+    )
+    compare_parser.add_argument(
+        "--no-html",
+        action="store_true",
+        help="HTML出力を無効化"
+    )
+
     args = parser.parse_args()
 
-    result_dir = Path(args.result_dir)
-    result_file = Path(args.result_file) if args.result_file else None
-    config_path = Path(args.config) if args.config else None
+    # サブコマンドが指定されていない場合（後方互換性のため-dオプションをチェック）
+    if args.command is None:
+        # 古い形式のCLI引数をパース（後方互換）
+        if len(sys.argv) > 1 and sys.argv[1].startswith('-'):
+            # 旧形式（-d で始まる）をsingleコマンドとして処理
+            args = single_parser.parse_args()
+            args.command = "single"
+        else:
+            parser.print_help()
+            return
 
-    if args.legacy:
-        # レガシーモード（従来の方式）
-        generate_results_report(
-            result_dir=result_dir,
-            study_name=args.study_name,
-            result_file=result_file,
-        )
-    else:
-        # プラグインモード（新方式）
-        console.print()
-        console.rule("[bold cyan]最適化結果可視化（プラグインモード）[/bold cyan]", style="cyan")
-        console.print()
-        console.print(Panel(f"📁 対象ディレクトリ: {result_dir}", border_style="cyan"))
+    if args.command in ("single", "s"):
+        # 単体可視化
+        result_dir = Path(args.result_dir)
+        result_file = Path(args.result_file) if args.result_file else None
+        config_path = Path(args.config) if args.config else None
 
-        # Study読み込み
-        study = None
-        db_path = result_dir / "optuna_study_unified.db"
-        study_name = args.study_name
-        best_trial_number = None
+        if args.legacy:
+            # レガシーモード（従来の方式）
+            generate_results_report(
+                result_dir=result_dir,
+                study_name=args.study_name,
+                result_file=result_file,
+            )
+        else:
+            # プラグインモード（新方式）
+            console.print()
+            console.rule("[bold cyan]最適化結果可視化（プラグインモード）[/bold cyan]", style="cyan")
+            console.print()
+            console.print(Panel(f"📁 対象ディレクトリ: {result_dir}", border_style="cyan"))
 
-        if db_path.exists():
-            if study_name is None:
+            # Study読み込み
+            study = None
+            db_path = result_dir / "optuna_study_unified.db"
+            study_name = args.study_name
+            best_trial_number = None
+
+            if db_path.exists():
+                if study_name is None:
+                    try:
+                        storage = optuna.storages.RDBStorage(url=f"sqlite:///{db_path}")
+                        study_summaries = storage.get_all_studies()
+                        if study_summaries:
+                            study_name = study_summaries[0].study_name
+                    except Exception:
+                        pass
+
                 try:
-                    storage = optuna.storages.RDBStorage(url=f"sqlite:///{db_path}")
-                    study_summaries = storage.get_all_studies()
-                    if study_summaries:
-                        study_name = study_summaries[0].study_name
-                except Exception:
-                    pass
+                    study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
+                    best_trial_number = study.best_trial.number
+                    console.print(f"[green]🏆 最適トライアル: #{best_trial_number} (コスト: {study.best_value:.2f}万円)[/green]")
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Study読み込みエラー: {e}[/yellow]")
 
-            try:
-                study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
-                best_trial_number = study.best_trial.number
-                console.print(f"[green]🏆 最適トライアル: #{best_trial_number} (コスト: {study.best_value:.2f}万円)[/green]")
-            except Exception as e:
-                console.print(f"[yellow]⚠️ Study読み込みエラー: {e}[/yellow]")
+            # 結果ファイル選択
+            if result_file is None:
+                pkl_files = list(result_dir.glob("*.pkl"))
 
-        # 結果ファイル選択
-        if result_file is None:
-            pkl_files = list(result_dir.glob("*.pkl"))
+                if pkl_files:
+                    if best_trial_number is not None:
+                        best_pattern = f"trial_{best_trial_number}_"
+                        best_files = [f for f in pkl_files if best_pattern in f.name and "_normal" in f.name]
+                        if not best_files:
+                            best_files = [f for f in pkl_files if best_pattern in f.name]
 
-            if pkl_files:
-                if best_trial_number is not None:
-                    best_pattern = f"trial_{best_trial_number}_"
-                    best_files = [f for f in pkl_files if best_pattern in f.name and "_normal" in f.name]
-                    if not best_files:
-                        best_files = [f for f in pkl_files if best_pattern in f.name]
+                        for candidate in best_files:
+                            try:
+                                with open(candidate, 'rb') as f:
+                                    pickle.load(f)
+                                result_file = candidate
+                                console.print(f"[green]✅ 最適トライアルのファイルを使用[/green]")
+                                break
+                            except Exception:
+                                continue
 
-                    for candidate in best_files:
-                        try:
-                            with open(candidate, 'rb') as f:
-                                pickle.load(f)
-                            result_file = candidate
-                            console.print(f"[green]✅ 最適トライアルのファイルを使用[/green]")
-                            break
-                        except Exception:
-                            continue
+                    if result_file is None:
+                        normal_files = [f for f in pkl_files if "_normal.pkl" in f.name]
+                        if normal_files:
+                            pkl_files = normal_files
+                        pkl_files = sorted(pkl_files, key=lambda f: f.stat().st_size, reverse=True)
 
-                if result_file is None:
-                    normal_files = [f for f in pkl_files if "_normal.pkl" in f.name]
-                    if normal_files:
-                        pkl_files = normal_files
-                    pkl_files = sorted(pkl_files, key=lambda f: f.stat().st_size, reverse=True)
+                        for candidate in pkl_files:
+                            try:
+                                with open(candidate, 'rb') as f:
+                                    pickle.load(f)
+                                result_file = candidate
+                                break
+                            except Exception:
+                                continue
 
-                    for candidate in pkl_files:
-                        try:
-                            with open(candidate, 'rb') as f:
-                                pickle.load(f)
-                            result_file = candidate
-                            break
-                        except Exception:
-                            continue
+            if result_file:
+                console.print(f"[cyan]📄 対象ファイル: {result_file.name}[/cyan]")
 
-        if result_file:
-            console.print(f"[cyan]📄 対象ファイル: {result_file.name}[/cyan]")
+            # プラグイン実行
+            run_visualizers_from_config(
+                result_dir=result_dir,
+                result_file=result_file,
+                study=study,
+                config_path=config_path,
+            )
 
-        # プラグイン実行
-        run_visualizers_from_config(
-            result_dir=result_dir,
-            result_file=result_file,
-            study=study,
-            config_path=config_path,
+            console.print()
+            console.print(Panel("[bold green]✨ 全可視化完了 ✨[/bold green]", border_style="green"))
+            console.print()
+
+    elif args.command in ("compare", "c"):
+        # シナリオ比較
+        from src.util.scenario_compare import find_result_dirs_by_pattern
+
+        result_dirs = []
+
+        # --pattern オプション
+        if args.pattern:
+            result_dirs.extend(find_result_dirs_by_pattern(args.pattern))
+
+        # -d オプション（複数指定）
+        if args.result_dirs:
+            for d in args.result_dirs:
+                p = Path(d)
+                if p.is_dir():
+                    result_dirs.append(p)
+
+        if not result_dirs:
+            console.print("[red]❌ 比較対象ディレクトリが見つかりません[/red]")
+            return
+
+        # 重複除去・ソート
+        result_dirs = sorted(set(result_dirs), key=lambda d: d.name)
+
+        compare_scenarios(
+            result_dirs=result_dirs,
+            output_dir=Path(args.output),
+            save_png=not args.no_png,
+            save_html=not args.no_html,
         )
-
-        console.print()
-        console.print(Panel("[bold green]✨ 全可視化完了 ✨[/bold green]", border_style="green"))
-        console.print()
 
 
 if __name__ == "__main__":
     main()
+
 
