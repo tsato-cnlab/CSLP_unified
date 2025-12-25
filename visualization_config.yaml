@@ -25,3 +25,11 @@ visualizers:
   # 統計サマリー（テキストファイル）
   results_summary:
     enabled: true
+
+# 拡張可視化設定
+# P=0の場合、故障シナリオを追加実行して平常時・故障時両方を可視化
+extended_visualization:
+  enabled: true
+  # 出力サブディレクトリ名
+  normal_subdir: "normal"
+  failure_subdir: "failure"
