@@ -697,37 +697,350 @@ def run_visualizers_from_config(
             console.print(f"[yellow]⚠️ {visualizer.name} でエラー: {e}[/yellow]")
 
 
+def generate_extended_report(
+    result_dir: Path,
+    study_name: Optional[str] = None,
+    config=None,
+) -> None:
+    """平常時・故障時（ワーストケース）両方の可視化を実行
+
+    Args:
+        result_dir: 結果ディレクトリのパス
+        study_name: Optuna Study名（指定しない場合は推測）
+        config: UnifiedOptimizationConfig（P値判定に使用）
+    """
+    result_dir = Path(result_dir)
+
+    if not result_dir.exists():
+        console.print(f"[red]❌ ディレクトリが存在しません: {result_dir}[/red]")
+        return
+
+    console.print()
+    console.rule("[bold cyan]拡張可視化レポート生成[/bold cyan]", style="cyan")
+    console.print()
+    console.print(Panel(f"📁 対象ディレクトリ: {result_dir}", border_style="cyan"))
+
+    # P値を取得
+    failure_weight = 0.0
+    if config is not None:
+        failure_weight = getattr(config, 'failure_weight', 0.0)
+    console.print(f"[cyan]📊 failure_weight (P): {failure_weight}[/cyan]")
+
+    # データベースを探す
+    db_path = result_dir / "optuna_study_unified.db"
+    study = None
+    best_trial_number = None
+
+    if db_path.exists():
+        if study_name is None:
+            try:
+                storage = optuna.storages.RDBStorage(url=f"sqlite:///{db_path}")
+                study_summaries = storage.get_all_studies()
+                if study_summaries:
+                    study_name = study_summaries[0].study_name
+            except Exception:
+                pass
+
+        try:
+            study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
+            best_trial_number = study.best_trial.number
+            console.print(f"[green]🏆 最適トライアル: #{best_trial_number} (コスト: {study.best_value:.2f}万円)[/green]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Study読み込みエラー: {e}[/yellow]")
+    else:
+        console.print("[yellow]⚠️ Optunaデータベースが見つかりません[/yellow]")
+
+    # 結果pklファイルを探す
+    pkl_files = list(result_dir.glob("*.pkl"))
+    if not pkl_files:
+        console.print("[red]❌ 結果pklファイルが見つかりません[/red]")
+        return
+
+    # 平常時ファイルを特定
+    normal_file = None
+    failure_file = None
+
+    if best_trial_number is not None:
+        best_pattern = f"trial_{best_trial_number}_"
+
+        # 平常時ファイル
+        normal_candidates = [f for f in pkl_files if best_pattern in f.name and "_normal" in f.name]
+        for candidate in normal_candidates:
+            try:
+                with open(candidate, 'rb') as f:
+                    pickle.load(f)
+                normal_file = candidate
+                break
+            except Exception:
+                continue
+
+        # 故障時ファイル（P>0の場合は既に存在するはず）
+        failure_candidates = [f for f in pkl_files if best_pattern in f.name and "_failure_" in f.name]
+        for candidate in failure_candidates:
+            try:
+                with open(candidate, 'rb') as f:
+                    pickle.load(f)
+                failure_file = candidate
+                break
+            except Exception:
+                continue
+
+    # フォールバック: normalファイル
+    if normal_file is None:
+        normal_candidates = [f for f in pkl_files if "_normal" in f.name]
+        normal_candidates = sorted(normal_candidates, key=lambda f: f.stat().st_mtime, reverse=True)
+        for candidate in normal_candidates:
+            try:
+                with open(candidate, 'rb') as f:
+                    pickle.load(f)
+                normal_file = candidate
+                break
+            except Exception:
+                continue
+
+    if normal_file is None:
+        console.print("[red]❌ 平常時結果ファイルが見つかりません[/red]")
+        return
+
+    console.print(f"[cyan]📄 平常時ファイル: {normal_file.name}[/cyan]")
+
+    # P=0で故障ファイルがない場合、故障シナリオを実行
+    if failure_weight == 0.0 and failure_file is None:
+        console.print("[yellow]📊 P=0のため故障シナリオを追加実行します...[/yellow]")
+        failure_file = _run_failure_simulation_for_visualization(
+            normal_file, result_dir, config
+        )
+
+    if failure_file is not None:
+        console.print(f"[cyan]📄 故障時ファイル: {failure_file.name}[/cyan]")
+    else:
+        console.print("[yellow]⚠️ 故障時ファイルが見つかりません（スキップ）[/yellow]")
+
+    # サブディレクトリ作成
+    normal_dir = result_dir / "normal"
+    failure_dir = result_dir / "failure"
+    normal_dir.mkdir(parents=True, exist_ok=True)
+    failure_dir.mkdir(parents=True, exist_ok=True)
+
+    # 平常時可視化
+    console.print()
+    console.rule("[bold green]平常時 可視化[/bold green]", style="green")
+    run_visualizers_from_config(
+        result_dir=normal_dir,
+        result_file=normal_file,
+        study=study,
+    )
+
+    # 故障時可視化
+    if failure_file is not None:
+        console.print()
+        console.rule("[bold red]故障時（ワーストケース）可視化[/bold red]", style="red")
+        run_visualizers_from_config(
+            result_dir=failure_dir,
+            result_file=failure_file,
+            study=study,
+        )
+
+    # 最適化履歴はトップレベルに出力
+    if db_path.exists() and study_name:
+        plot_optimization_history(
+            db_path, study_name,
+            result_dir / "optimization_history.png"
+        )
+
+    console.print()
+    console.print(Panel("[bold green]✨ 拡張可視化完了 ✨[/bold green]", border_style="green"))
+    console.print(f"  📁 平常時: {normal_dir}")
+    console.print(f"  📁 故障時: {failure_dir}")
+    console.print()
+
+
+def _run_failure_simulation_for_visualization(
+    normal_file: Path,
+    result_dir: Path,
+    config,
+) -> Optional[Path]:
+    """P=0の場合に故障シナリオを実行してワーストケースファイルを返す
+
+    Args:
+        normal_file: 平常時結果ファイル
+        result_dir: 結果ディレクトリ
+        config: UnifiedOptimizationConfig
+
+    Returns:
+        ワーストケースのpklファイルパス（失敗時はNone）
+    """
+    try:
+        # 平常時結果からcs_configを取得
+        with open(normal_file, 'rb') as f:
+            emates_result = pickle.load(f)
+        cs_config = emates_result.cs_config
+
+        # 設置済みCSを特定
+        installed_cs_indices = [
+            i for i, ports in enumerate(cs_config.get('ports', []))
+            if ports > 0
+        ]
+
+        if len(installed_cs_indices) == 0:
+            console.print("[yellow]⚠️ 設置CSがありません[/yellow]")
+            return None
+
+        console.print(f"[cyan]🔥 故障シナリオ実行中... (CS数: {len(installed_cs_indices)})[/cyan]")
+
+        # 故障シナリオ実行用のインポート
+        from src.simulation.create_emates_env import prepare_parallel_environment
+        from src.util.file_manager import cleanup_worker_environments
+        from src.util.optimization import create_failure_info_for_worker, update_cs_list
+        from src.util.path_manager import get_paths
+        from src.simulation.run_emates import only_run_emates
+        from src.simulation.data_load import save_data_to_pickle
+
+        # Worker環境準備
+        prepare_parallel_environment(cs_config, parallel_count=1, batch_size=8)
+
+        results = []
+        worker_start = 1
+
+        for i, failure_cs_idx in enumerate(installed_cs_indices):
+            worker_id = worker_start + (i % 8)
+            console.print(f"  [dim]故障CS {failure_cs_idx} をシミュレーション中 (Worker {worker_id})...[/dim]")
+
+            try:
+                # Workerパスを取得
+                worker_paths = get_paths(worker_id)
+
+                # 故障情報作成
+                from threading import Lock
+                file_write_lock = Lock()
+                failure_time = getattr(config, 'failure_time', 36000) if config else 36000
+                create_failure_info_for_worker(
+                    cs_config, failure_cs_idx, worker_id,
+                    FAILURE_TIME=failure_time,
+                    file_write_lock=file_write_lock
+                )
+
+                # CS設定書き込み
+                csList_file = worker_paths["csList"]
+                update_cs_list(cs_config, csList_file)
+
+                # シミュレーション実行
+                t_hour = getattr(config, 't_hour', 24) if config else 24
+                only_run_emates(worker_id=worker_id, HOUR=t_hour)
+
+                # 結果保存
+                scenario_suffix = f"failure_{failure_cs_idx}"
+                results_filename = f"viz_{scenario_suffix}.pkl"
+                results_filepath = result_dir / results_filename
+
+                save_data_to_pickle(filename=str(results_filepath), worker_id=worker_id)
+
+                # コスト評価
+                evaluation_cost, _ = evaluation_total_costs(result_file=str(results_filepath))
+
+                results.append({
+                    'failure_cs_idx': failure_cs_idx,
+                    'cost': evaluation_cost,
+                    'filepath': results_filepath,
+                })
+
+                console.print(f"  [dim]  → コスト: {evaluation_cost:.2f}万円[/dim]")
+
+            except Exception as e:
+                console.print(f"  [yellow]⚠️ 故障CS {failure_cs_idx} でエラー: {e}[/yellow]")
+                continue
+
+        # クリーンアップ
+        cleanup_worker_environments()
+
+        if not results:
+            console.print("[yellow]⚠️ 有効な故障シナリオ結果がありません[/yellow]")
+            return None
+
+        # ワーストケース（最大コスト）を特定
+        worst_result = max(results, key=lambda x: x['cost'])
+        worst_file = worst_result['filepath']
+        console.print(f"[green]📊 ワーストケース: 故障CS {worst_result['failure_cs_idx']} "
+                     f"(コスト: {worst_result['cost']:.2f}万円)[/green]")
+
+        # ワーストケース以外を削除
+        for result in results:
+            if result['filepath'] != worst_file:
+                try:
+                    result['filepath'].unlink()
+                except Exception:
+                    pass
+
+        return worst_file
+
+    except Exception as e:
+        console.print(f"[red]❌ 故障シナリオ実行エラー: {e}[/red]")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 def main():
     """コマンドラインエントリポイント"""
-    parser = argparse.ArgumentParser(description="最適化結果可視化ツール")
+    parser = argparse.ArgumentParser(
+        description="最適化結果可視化ツール",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  # 基本的な使い方（平常時のみ可視化）
+  python -m src.util.visualize_results -d results/exp1
+
+  # 拡張可視化（平常時+故障時両方）
+  python -m src.util.visualize_results -d results/exp1 --extended
+
+  # 拡張可視化（P=0で故障シナリオを追加実行する場合）
+  python -m src.util.visualize_results -d results/exp1 --extended --optim-config config.json
+
+  # レガシーモード（プラグインを使用しない従来方式）
+  python -m src.util.visualize_results -d results/exp1 --legacy
+"""
+    )
     parser.add_argument(
         "--result-dir", "-d",
         type=str,
         required=True,
-        help="結果ディレクトリのパス"
+        help="結果ディレクトリのパス（必須）"
     )
     parser.add_argument(
         "--study-name", "-s",
         type=str,
         default=None,
-        help="Optuna Study名（省略時は自動推測）"
+        help="Optuna Study名（省略時はDBから自動推測）"
     )
     parser.add_argument(
         "--result-file", "-f",
         type=str,
         default=None,
-        help="対象の結果pklファイル（省略時は最適トライアルの結果）"
+        help="対象の結果pklファイル（省略時は最適トライアルの結果を自動選択）"
     )
     parser.add_argument(
         "--config", "-c",
         type=str,
         default=None,
-        help="可視化設定ファイルパス（省略時はデフォルト）"
+        help="可視化設定ファイルパス（省略時は visualization_config.yaml）"
+    )
+    parser.add_argument(
+        "--extended", "-e",
+        action="store_true",
+        help="拡張可視化モード: 平常時と故障時（ワーストケース）の両方を可視化。"
+             "出力は normal/ と failure/ サブディレクトリに保存される"
+    )
+    parser.add_argument(
+        "--optim-config",
+        type=str,
+        default=None,
+        help="最適化設定JSONファイルのパス（--extended使用時、P=0で故障シナリオを"
+             "追加実行する場合に必要）"
     )
     parser.add_argument(
         "--legacy",
         action="store_true",
-        help="レガシーモード（プラグインを使用しない）"
+        help="レガシーモード: プラグインを使用しない従来の可視化方式"
     )
 
     args = parser.parse_args()
@@ -742,6 +1055,23 @@ def main():
             result_dir=result_dir,
             study_name=args.study_name,
             result_file=result_file,
+        )
+    elif args.extended:
+        # 拡張可視化モード（平常時+故障時両方）
+        optim_config = None
+        if args.optim_config:
+            try:
+                from src.config.unified_optimization_config import UnifiedOptimizationConfig
+                optim_config = UnifiedOptimizationConfig.from_json(Path(args.optim_config))
+                console.print(f"[cyan]📋 最適化設定読み込み: {args.optim_config}[/cyan]")
+            except Exception as e:
+                console.print(f"[yellow]⚠️ 最適化設定読み込みエラー: {e}[/yellow]")
+                console.print("[dim]  故障シナリオの追加実行はスキップされます[/dim]")
+
+        generate_extended_report(
+            result_dir=result_dir,
+            study_name=args.study_name,
+            config=optim_config,
         )
     else:
         # プラグインモード（新方式）

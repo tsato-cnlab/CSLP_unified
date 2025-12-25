@@ -820,14 +820,17 @@ if __name__ == "__main__":
     # 可視化実行
     if run_visualization:
         try:
-            from src.util.visualize_results import generate_results_report
+            from src.util.visualize_results import generate_extended_report
             print("\n📊 可視化レポート生成中...")
-            generate_results_report(
+            generate_extended_report(
                 result_dir=config.save_dir,
                 study_name=study_name,
+                config=config,
             )
         except Exception as viz_error:
             print(f"⚠️ 可視化エラー（スキップ）: {viz_error}")
+            import traceback
+            traceback.print_exc()
     else:
         print("\n⏭️ 可視化はスキップされました（--no-visualize）")
 
