@@ -38,6 +38,7 @@ from src.util.cost_calculator import (
 )
 from src.util.file_manager import (
     cleanup_worker_environments,
+    manage_pkl_files_after_optimization,
 )
 from src.util.optimization import (
     check_cs_placement,
@@ -54,14 +55,16 @@ file_write_lock = Lock()
 CONFIG: Optional[UnifiedOptimizationConfig] = None
 
 
-def get_initial_cs_params() -> list[dict]:
-    """初期パラメータセットを生成（CONFIGから読み込み）
+def get_initial_cs_params(config: UnifiedOptimizationConfig) -> list[dict]:
+    """初期パラメータセットを生成（CSVから読み込み）
+
+    Args:
+        config: 最適化設定（initial_cs_config_fileを含む）
 
     Returns:
         list[dict]: 初期パラメータのリスト（各要素はOptunaパラメータ辞書）
+                   例: [{'ports_0': 1, 'capacity_0': 100, ...}, ...]
     """
-    assert CONFIG is not None, "CONFIG is not initialized"
-
     # csList.txtから利用可能なCS情報を取得
     paths = get_paths()
     cslist_file = paths['csList']
@@ -77,65 +80,46 @@ def get_initial_cs_params() -> list[dict]:
 
     initial_configs = []
 
-    # 設定ファイルまたはCSVから初期配置を読み込み
-    if CONFIG.initial_cs_configs:
-        print(f"📋 設定から{len(CONFIG.initial_cs_configs)}個の初期配置を読み込み")
-        for config_data in CONFIG.initial_cs_configs:
+    if not config.initial_cs_config_file:
+        print("⚠️ 初期配置ファイルが設定されていません（initial_cs_config_file）")
+        return []
+
+    print(f"📋 CSVファイルから初期配置を読み込み: {config.initial_cs_config_file}")
+    try:
+        import pandas as pd
+        df = pd.read_csv(config.initial_cs_config_file)
+
+        # CSVフォーマット: config_name, csid, capacity_kw, ports
+        # 同一のconfig_nameは同じcs_configとしてグループ化
+        grouped = df.groupby('config_name')
+
+        for config_name, group in grouped:
+            # Optunaパラメータ形式の辞書を作成（インデックスベース）
             params = {}
-            # 全CSを0で初期化
-            for csid in csids:
-                params[f'cs_{csid}_ports'] = 0
 
-            # 指定されたCSのみ設定（[csid, ports, capacity_kw]形式に対応）
-            for placement in config_data.get('placements', []):
-                if len(placement) == 2:
-                    # 旧形式: [csid, ports]
-                    csid, ports = placement
-                    capacity_kw = None  # Optunaに任せる
-                elif len(placement) == 3:
-                    # 新形式: [csid, capacity_kw, ports]
-                    csid, capacity_kw, ports = placement
-                else:
-                    continue
+            # 全CSを0で初期化（ports_{i}形式）
+            for i in range(len(csids)):
+                params[f'ports_{i}'] = 0
 
+            # CSVの各行からCS設定を読み込み
+            for _, row in group.iterrows():
+                csid = int(row['csid'])
                 if csid in csids:
-                    params[f'cs_{csid}_ports'] = ports
-                    if capacity_kw is not None:
-                        params[f'cs_{csid}_cap_kw'] = int(capacity_kw)
+                    idx = csids.index(csid)
+                    params[f'ports_{idx}'] = int(row['ports'])
+                    params[f'capacity_{idx}'] = int(row['capacity_kw'])
 
             initial_configs.append(params)
-    else:
-        # デフォルトの初期配置を生成
-        print("📋 デフォルトの初期配置を生成")
+            active_count = sum(1 for i in range(len(csids)) if params.get(f'ports_{i}', 0) > 0)
+            print(f"  - {config_name}: {active_count}箇所にCS配置")
 
-        # 初期値1: 均等配置（全CSに1ポートずつ、100kW）
-        params1 = {}
-        for csid in csids:
-            params1[f'cs_{csid}_ports'] = 1
-            params1[f'cs_{csid}_cap_kw'] = 100.0
-        initial_configs.append(params1)
+        print(f"✅ {len(initial_configs)}個の初期配置を読み込みました")
 
-        # 初期値2: 最初の5箇所に配置（100kW）
-        params2 = {}
-        for i, csid in enumerate(csids):
-            params2[f'cs_{csid}_ports'] = 1 if i < 5 else 0
-            if i < 5:
-                params2[f'cs_{csid}_cap_kw'] = 100.0
-        initial_configs.append(params2)
-
-        # 初期値3: ランダム配置（3-7箇所、150kW）
-        import random
-        random.seed(42)
-        params3 = {}
-        num_active = random.randint(3, min(7, len(csids)))
-        active_indices = random.sample(range(len(csids)), num_active)
-        for i, csid in enumerate(csids):
-            if i in active_indices:
-                params3[f'cs_{csid}_ports'] = 1
-                params3[f'cs_{csid}_cap_kw'] = 150.0
-            else:
-                params3[f'cs_{csid}_ports'] = 0
-        initial_configs.append(params3)
+    except Exception as e:
+        print(f"❌ CSV読み込みエラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
 
     return initial_configs
 
@@ -152,8 +136,6 @@ def run_single_failure_scenario(task_data):
         dict: 実行結果
     """
     cs_config, failure_cs_idx, trial_number, worker_id, save_dir, combination_id, config = task_data
-
-    # シナリオタイプを判定
     scenario_type = "正常ケース" if failure_cs_idx is None else f"故障CS{failure_cs_idx}"
     print(f"🚀 Worker{worker_id}: {scenario_type} 開始")
 
@@ -297,19 +279,6 @@ def create_failure_scenario_parallel_safe(cs_config_dict, trial_number, combinat
 
     print(f"📊 故障シナリオ結果: 有効{len(valid_results)}/{len(results)}件, 最悪コスト={worst_cost:.2f}万円")
 
-    # ワーストケース以外の結果ファイルを削除
-    import threading
-    def cleanup_files():
-        for result in results:
-            if result['cost'] != worst_cost and 'results_filepath' in result:
-                try:
-                    if os.path.exists(result['results_filepath']):
-                        os.remove(result['results_filepath'])
-                except Exception:
-                    pass
-
-    threading.Thread(target=cleanup_files, daemon=True).start()
-
     return {
         'trial_number': trial_number,
         'worst_cost': worst_cost,
@@ -332,46 +301,72 @@ def evaluate_unified_objective(cs_config_dict, trial_number, combination_id, con
     """
     print(f"\n=== Trial {trial_number}: 統合評価開始 (P={config.failure_weight}) ===")
 
-    # ========================================
-    # Step 1: 平常時シナリオ実行
-    # ========================================
     normal_cost = 0.0
     normal_result = None
+    worst_failure_cost = 0.0
+    failure_result = None
 
-    if config.failure_weight < 1.0:  # P<1.0の場合のみ実行
+    # P値に応じて実行パターンを決定
+    run_normal = config.failure_weight < 1.0  # P<1.0の場合に平常時を実行
+    run_failure = config.failure_weight > 0.0  # P>0.0の場合に故障時を実行
+
+    # ========================================
+    # ケース1: 両方実行（0 < P < 1）→ 並列実行
+    # ========================================
+    if run_normal and run_failure:
+        print(f"⚡ 平常時・故障時シナリオを並列実行中...")
+
+        worker_id_normal = combination_id * 9 + 1  # 平常時Worker
+        normal_task = (cs_config_dict, None, trial_number, worker_id_normal,
+                      str(config.save_dir), combination_id, config)
+
+        # ThreadPoolExecutorで並列実行（ProcessPoolExecutorはネストした並列処理で問題が起きやすい）
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            # 両方のタスクを同時に開始
+            normal_future = executor.submit(run_single_failure_scenario, normal_task)
+            failure_future = executor.submit(
+                create_failure_scenario_parallel_safe,
+                cs_config_dict, trial_number, combination_id, config
+            )
+
+            # 結果を収集
+            normal_result = normal_future.result()
+            failure_result = failure_future.result()
+
+        normal_cost = normal_result['cost']
+        worst_failure_cost = failure_result['worst_cost']
+
+        print(f"✅ 平常時コスト: {normal_cost:.2f}万円")
+        print(f"✅ ワースト故障コスト: {worst_failure_cost:.2f}万円")
+
+    # ========================================
+    # ケース2: 平常時のみ実行（P=0）
+    # ========================================
+    elif run_normal and not run_failure:
         worker_id = combination_id * 9 + 1  # 平常時Worker
-        print(f"📊 平常時シナリオ実行中... (Worker {worker_id})")
+        print(f"📊 平常時シナリオのみ実行中... (Worker {worker_id})")
 
-        # 平常時はfailure_cs_idx=None
         normal_task = (cs_config_dict, None, trial_number, worker_id,
                       str(config.save_dir), combination_id, config)
         normal_result = run_single_failure_scenario(normal_task)
         normal_cost = normal_result['cost']
 
         print(f"✅ 平常時コスト: {normal_cost:.2f}万円")
-    else:
+        print("⏭️  P=0.0のため故障シナリオをスキップ")
+        failure_result = {'worst_cost': 0.0, 'worst_details': {}, 'all_results': []}
+
+    # ========================================
+    # ケース3: 故障時のみ実行（P=1）
+    # ========================================
+    elif not run_normal and run_failure:
         print("⏭️  P=1.0のため平常時シナリオをスキップ")
+        print(f"🔥 故障シナリオのみ実行中...")
 
-    # ========================================
-    # Step 2: 故障シナリオ実行
-    # ========================================
-    worst_failure_cost = 0.0
-    failure_result = None
-
-    if config.failure_weight > 0.0:  # P>0.0の場合のみ実行
-        print(f"🔥 故障シナリオ実行中...")
         failure_result = create_failure_scenario_parallel_safe(
             cs_config_dict, trial_number, combination_id, config
         )
         worst_failure_cost = failure_result['worst_cost']
         print(f"✅ ワースト故障コスト: {worst_failure_cost:.2f}万円")
-    else:
-        print("⏭️  P=0.0のため故障シナリオをスキップ")
-        failure_result = {
-            'worst_cost': 0.0,
-            'worst_details': {},
-            'all_results': []
-        }
 
     # ========================================
     # Step 3: 統合コスト計算（カスタム目的関数を使用）
@@ -426,7 +421,7 @@ def run_parallel_optimization_batch_unified(study, outer_parallel):
         total_ports = sum(config['ports'])
         print(f"  Trial {trial.number} (組み合わせ{i}): CS配置{active_cs}箇所, 合計{total_ports}ポート")
 
-    # 環境構築
+    # 環境構築: 必要Worker数 = outer_parallel * 9 (各組み合わせに平常時1 + 故障時8)
     max_workers_needed = outer_parallel * 9
     print(f"🖥️  必要Worker数: {max_workers_needed} (平常{outer_parallel} + 故障{outer_parallel*8})")
 
@@ -573,14 +568,18 @@ def run_optimization_with_unified_objective(study, config: UnifiedOptimizationCo
     print(f"🔍 収束判定: {config.convergence_patience}トライアル連続で"
           f"改善率{config.convergence_threshold*100:.2f}%未満で終了")
 
-    current_trials = len(study.trials)
-    remaining_trials = max(0, config.total_trials - current_trials)
+    # 完了したトライアル数で判定（enqueue済み未実行は含まない）
+    completed_trials_count = len([t for t in study.trials
+                                  if t.state == optuna.trial.TrialState.COMPLETE])
+    total_trials_count = len(study.trials)
+    print(f"📊 現在のトライアル数: {total_trials_count} (完了: {completed_trials_count})")
+    remaining_trials = max(0, config.total_trials - completed_trials_count)
 
     if remaining_trials == 0:
         print("✅ すべてのトライアルが完了済みです")
         return
 
-    print(f"📊 現在の進捗: {current_trials}/{config.total_trials}")
+    print(f"📊 現在の進捗: {completed_trials_count}/{config.total_trials}")
     print(f"🔄 残り{remaining_trials}トライアルを実行します")
 
     # バッチ数を計算
@@ -588,13 +587,15 @@ def run_optimization_with_unified_objective(study, config: UnifiedOptimizationCo
 
     try:
         for batch_idx in range(batches_needed):
-            current_trials = len(study.trials)
-            if current_trials >= config.total_trials:
+            # 完了したトライアル数で判定（enqueue済み未実行は含まない）
+            completed_trials_count = len([t for t in study.trials
+                                          if t.state == optuna.trial.TrialState.COMPLETE])
+            if completed_trials_count >= config.total_trials:
                 print("✅ 目標トライアル数に到達しました")
                 break
 
             # 収束判定
-            if current_trials >= config.convergence_patience:
+            if completed_trials_count >= config.convergence_patience:
                 is_converged, convergence_msg = check_convergence(
                     study,
                     patience=config.convergence_patience,
@@ -604,17 +605,18 @@ def run_optimization_with_unified_objective(study, config: UnifiedOptimizationCo
                 print(f"🔍 {convergence_msg}")
 
                 if is_converged:
-                    print(f"🛑 収束により最適化を終了します (Trial {current_trials})")
+                    print(f"🛑 収束により最適化を終了します (Trial {completed_trials_count})")
                     print(f"📊 最終最適値: {study.best_value:.2f}万円")
                     break
 
-            actual_batch_size = min(config.outer_parallel, config.total_trials - current_trials)
+            actual_batch_size = min(config.outer_parallel, config.total_trials - completed_trials_count)
             print(f"\n--- バッチ {batch_idx + 1}/{batches_needed} (サイズ: {actual_batch_size}) ---")
 
             completed = run_parallel_optimization_batch_unified(study, actual_batch_size)
 
-            current_trials = len(study.trials)
-            print(f"📈 進捗更新: {current_trials}/{config.total_trials} 完了")
+            completed_trials_count = len([t for t in study.trials
+                                          if t.state == optuna.trial.TrialState.COMPLETE])
+            print(f"📈 進捗更新: {completed_trials_count}/{config.total_trials} 完了")
 
     except KeyboardInterrupt:
         print("\n⚠️ ユーザーによる中断")
@@ -629,11 +631,209 @@ def run_optimization_with_unified_objective(study, config: UnifiedOptimizationCo
     print(f"🎉 統合最適化完了: {len(study.trials)}トライアル実行済み")
 
 
-def load_config_from_args() -> tuple[UnifiedOptimizationConfig, bool]:
+def run_evaluate_only_mode(config: UnifiedOptimizationConfig, initial_config_name: str | None = None):
+    """初期解を評価するだけのモード（最適化をスキップ）
+
+    Args:
+        config: 最適化設定
+        initial_config_name: 評価する初期配置の名前（Noneの場合は全初期配置を評価）
+    """
+    global CONFIG
+    CONFIG = config
+
+    print("\n" + "=" * 60)
+    print("🔍 評価専用モード（最適化スキップ）")
+    print("=" * 60)
+
+    # csList.txtから利用可能なCS情報を取得
+    paths = get_paths()
+    cslist_file = paths['csList']
+
+    try:
+        with open(cslist_file, 'r') as f:
+            cslist_data = f.readlines()
+        cslist_data = [line.strip() for line in cslist_data if line.strip()]
+        csids = [int(line.split(',')[0]) for line in cslist_data]
+    except Exception as e:
+        print(f"❌ csList読み込みエラー: {e}")
+        return None
+
+    # 初期配置を取得
+    configs_to_evaluate = []
+
+    if config.initial_cs_config_file:
+        print(f"📋 CSVファイルから初期配置を読み込み: {config.initial_cs_config_file}")
+        try:
+            import pandas as pd
+            df = pd.read_csv(config.initial_cs_config_file)
+
+            # CSVフォーマット: name, csid, capacity_kw, ports
+            # 同一のnameは同じcs_configとしてグループ化
+            grouped = df.groupby('config_name')
+
+            for config_name, group in grouped:
+                # 特定の名前が指定されている場合はフィルタリング
+                if initial_config_name and config_name != initial_config_name:
+                    continue
+
+                # cs_config_dictを作成（全CSを0で初期化）
+                cs_config_dict = {}
+                for csid in csids:
+                    cs_config_dict[csid] = {'ports': 0, 'capacity_kw': 0}
+
+                # CSVの各行からCS設定を読み込み
+                for _, row in group.iterrows():
+                    csid = int(row['csid'])
+                    if csid in csids:
+                        cs_config_dict[csid] = {
+                            'ports': int(row['ports']),
+                            'capacity_kw': float(row['capacity_kw'])
+                        }
+
+                configs_to_evaluate.append({
+                    'name': config_name,
+                    'cs_config_dict': cs_config_dict
+                })
+
+            print(f"✅ {len(configs_to_evaluate)}個の初期配置を読み込みました")
+
+        except Exception as e:
+            print(f"❌ CSV読み込みエラー: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    else:
+        print("⚠️ 初期配置ファイルが設定されていません（initial_cs_config_file）")
+        return None
+
+    if not configs_to_evaluate:
+        print(f"⚠️ 指定された初期配置 '{initial_config_name}' が見つかりません")
+        # CSVファイルから利用可能な配置名を取得して表示
+        try:
+            import pandas as pd
+            df = pd.read_csv(config.initial_cs_config_file)
+            available_names = df['config_name'].unique().tolist()
+            print(f"   利用可能な配置: {available_names}")
+        except Exception:
+            pass
+        return None
+
+    print(f"📋 評価対象: {len(configs_to_evaluate)}個の初期配置")
+    for cfg in configs_to_evaluate:
+        active_cs = [csid for csid, v in cfg['cs_config_dict'].items() if v['ports'] > 0]
+        print(f"  - {cfg['name']}: {len(active_cs)}箇所にCS配置")
+
+    # 各配置を評価
+    results = []
+    for idx, eval_cfg in enumerate(configs_to_evaluate):
+        print(f"\n{'='*60}")
+        print(f"📊 評価開始: {eval_cfg['name']} ({idx+1}/{len(configs_to_evaluate)})")
+        print(f"{'='*60}")
+
+        cs_config_raw = eval_cfg['cs_config_dict']
+        combination_id = idx  # 評価専用なのでシンプルなID
+
+        # {csid: {'ports': ..., 'capacity_kw': ...}} 形式を
+        # {'csids': [...], 'ports': [...], 'cap_kw': [...]} 形式に変換
+        # 他の部分との構造の統一を図るため
+        cs_config_dict = {
+            'csids': list(cs_config_raw.keys()),
+            'ports': [v['ports'] for v in cs_config_raw.values()],
+            'cap_kw': [v['capacity_kw'] for v in cs_config_raw.values()]
+        }
+        print(f"cs_config変換後: csids={len(cs_config_dict['csids'])}件, "
+              f"active={sum(1 for p in cs_config_dict['ports'] if p > 0)}箇所")
+        # シミュレーション環境の作成＆実行
+        try:
+            unified_cost, details = evaluate_unified_objective(
+                cs_config_dict=cs_config_dict,
+                trial_number=0,
+                combination_id=combination_id,
+                config=config
+            )
+
+            result = {
+                'name': eval_cfg['name'],
+                'unified_cost': unified_cost,
+                'details': details,
+                'cs_config': cs_config_raw,  # 保存用は元の形式
+            }
+            results.append(result)
+
+            print(f"\n✅ 評価完了: {eval_cfg['name']}")
+            print(f"   統合コスト: {unified_cost:,.2f}万円")
+            if details:
+                print(f"   平常時コスト: {details.get('normal_cost', 'N/A')}")
+                print(f"   最悪故障コスト: {details.get('worst_failure_cost', 'N/A')}")
+
+        except Exception as e:
+            print(f"❌ 評価エラー: {eval_cfg['name']}")
+            print(f"   エラー内容: {e}")
+            import traceback
+            traceback.print_exc()
+            results.append({
+                'name': eval_cfg['name'],
+                'unified_cost': float('inf'),
+                'error': str(e),
+            })
+
+    # 結果を保存
+    config.save_dir.mkdir(parents=True, exist_ok=True)
+    results_file = config.save_dir / "evaluate_only_results.json"
+
+    # 結果をJSON保存用に変換
+    serializable_results = []
+    for r in results:
+        sr = {
+            'name': r['name'],
+            'unified_cost': r['unified_cost'] if r['unified_cost'] != float('inf') else 'Infinity',
+        }
+        if 'details' in r and r['details']:
+            sr['details'] = {k: v for k, v in r['details'].items()
+                           if not isinstance(v, (dict, list)) or k in ['normal_cost', 'worst_failure_cost']}
+        if 'error' in r:
+            sr['error'] = r['error']
+
+        # cs_configをシリアライズ
+        if 'cs_config' in r:
+            sr['cs_config'] = [
+                {'csid': csid, 'ports': v['ports'], 'capacity_kw': v['capacity_kw']}
+                for csid, v in r['cs_config'].items()
+                if v['ports'] > 0
+            ]
+
+        serializable_results.append(sr)
+
+    with open(results_file, 'w', encoding='utf-8') as f:
+        json.dump({
+            'mode': 'evaluate_only',
+            'timestamp': datetime.now().isoformat(),
+            'config': {
+                'experiment_name': config.experiment_name,
+                'failure_weight': config.failure_weight,
+                'objective_function': config.objective_function.name if hasattr(config.objective_function, 'name') else str(config.objective_function),
+            },
+            'results': serializable_results
+        }, f, indent=2, ensure_ascii=False)
+
+    print(f"\n💾 評価結果を保存: {results_file}")
+
+    # サマリー表示
+    print(f"\n{'='*60}")
+    print("📊 評価結果サマリー")
+    print(f"{'='*60}")
+    for r in results:
+        cost_str = f"{r['unified_cost']:,.2f}万円" if r['unified_cost'] != float('inf') else "エラー"
+        print(f"  {r['name']}: {cost_str}")
+
+    return results
+
+
+def load_config_from_args() -> tuple[UnifiedOptimizationConfig, bool, dict]:
     """コマンドライン引数から設定を読み込み
 
     Returns:
-        tuple: (設定オブジェクト, 可視化を実行するかどうか)
+        tuple: (設定オブジェクト, 可視化を実行するかどうか, 追加オプション辞書)
     """
     parser = argparse.ArgumentParser(description="統合最適化実行")
     parser.add_argument("--config", type=str, required=True,
@@ -642,6 +842,10 @@ def load_config_from_args() -> tuple[UnifiedOptimizationConfig, bool]:
                        help="既存のstudyから継続実行")
     parser.add_argument("--no-visualize", action="store_true",
                        help="最適化完了後の可視化をスキップ")
+    parser.add_argument("--evaluate-only", "-e", action="store_true",
+                       help="初期解のみを評価して最適化をスキップ")
+    parser.add_argument("--initial-config-name", type=str, default=None,
+                       help="評価する初期解の名前（initial_cs_configs.csvのconfig_name）")
 
     args = parser.parse_args()
 
@@ -652,7 +856,12 @@ def load_config_from_args() -> tuple[UnifiedOptimizationConfig, bool]:
     config = UnifiedOptimizationConfig.from_json(config_path)
     print(f"✅ 設定ファイルを読み込みました: {config_path}")
 
-    return config, not args.no_visualize
+    options = {
+        'evaluate_only': args.evaluate_only,
+        'initial_config_name': args.initial_config_name,
+    }
+
+    return config, not args.no_visualize, options
 
 
 def print_config_summary(config: UnifiedOptimizationConfig):
@@ -686,7 +895,7 @@ if __name__ == "__main__":
     print("\n🚀 統合最適化システム起動")
 
     # 設定読み込み
-    config, run_visualization = load_config_from_args()
+    config, run_visualization, options = load_config_from_args()
     print_config_summary(config)
 
     # グローバル設定（multiprocessing用）
@@ -696,6 +905,27 @@ if __name__ == "__main__":
     config.save_dir.mkdir(parents=True, exist_ok=True)
     print(f"\n📁 保存先ディレクトリ作成: {config.save_dir}")
 
+    # 評価専用モードの処理
+    if options.get('evaluate_only'):
+        print("\n🔍 評価専用モードで実行します")
+        try:
+            results = run_evaluate_only_mode(config, options.get('initial_config_name'))
+            if results:
+                print(f"\n✅ 評価完了: {len(results)}個の配置を評価しました")
+        except Exception as e:
+            print(f"❌ 評価エラー: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            cleanup_worker_environments()
+            print("🧹 クリーンアップ完了")
+
+        print(f"\n{'='*60}")
+        print("👋 評価専用モード終了")
+        print(f"{'='*60}\n")
+        sys.exit(0)
+
+    # 以下は通常の最適化モード
     # データベース設定
     db_url = f"sqlite:///{config.db_path}"
     storage = optuna.storages.RDBStorage(
@@ -732,11 +962,10 @@ if __name__ == "__main__":
 
             # 初期値の設定（新規studyの場合のみ）
             print("\n🎯 初期パラメータ設定")
-            initial_params = get_initial_cs_params()
+            initial_params = get_initial_cs_params(config)
             if initial_params:
                 for i, params in enumerate(initial_params):
                     study.enqueue_trial(params)
-                    print(f"  初期値{i+1}: {sum(params.values())}ポート配置")
                 print(f"✅ {len(initial_params)}個の初期パラメータをエンキュー")
 
     except Exception as e:
@@ -815,7 +1044,12 @@ if __name__ == "__main__":
     finally:
         print("\n🧹 クリーンアップ実行中...")
         cleanup_worker_environments()
-        print("✅ クリーンアップ完了")
+        print("✅ ワーカー環境クリーンアップ完了")
+
+        # pklファイル整理（Best1のみ保持）
+        print("\n🗑️ pklファイル整理中...")
+        manage_pkl_files_after_optimization(study, str(config.save_dir), keep_best_n=config.keep_best_n)
+        print("✅ pklファイル整理完了")
 
     # 可視化実行
     if run_visualization:

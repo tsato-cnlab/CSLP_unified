@@ -14,108 +14,7 @@ if project_root not in sys.path:
 
 from src.util.path_manager import get_paths
 from src.util.vis_result import get_waiting_times
-# from src.simulation.data_loader import load_vehicle_trip
 
-# 目的関数の指標
-# ==========
-def evaluation_total_costs(result_file) -> tuple:
-    """年間の総コストを計算"""
-    YEAR = 5
-    DISCOUNT_RATE = 0.03
-    # データ読み込み
-    with open(result_file, 'rb') as f:
-        emates_result = pickle.load(f)
-    timeseries_kw = emates_result.time_series_kw
-    cs_config = emates_result.cs_config
-    vehicle_trip = emates_result.vehicle_trip
-
-    # 初期コストとランニングコストの計算
-    initial_costs = calc_initial_costs(cs_config, timeseries_kw)
-    running_costs_yearly = calc_running_costs(cs_config, timeseries_kw)
-
-    # 年間コストの割引計算
-    running_costs_discounted = sum(
-        (running_costs_yearly / ((1 + DISCOUNT_RATE) ** i)) for i in range(1, YEAR + 1)
-    )
-    # ユーザーコストの計算(ベースラインとの差分を計算)
-    diff_trip_time, diff_transport_costs = calc_diff_trnsprt_costs(vehicle_trip)
-    # ユーザーコストの割引計算
-    additional_costs_discounted = sum(
-        (diff_transport_costs / ((1 + DISCOUNT_RATE) ** i)) for i in range(1, YEAR + 1)
-    )
-
-    total_costs = initial_costs + running_costs_discounted + additional_costs_discounted
-
-    return total_costs, emates_result
-
-def calc_initial_costs(cs_config, timeseries_kw)-> float:
-    """初期コストの計算"""
-    CHARGER_COST = {"50": 380, "90": 666, "100": 730}
-    SUBSTATION_COST_PER_KW = 2
-    INSTALLATION_COST = 250
-
-    capacity_list = cs_config['cap_kw']
-    ports_list = cs_config['ports']
-    ports_array = np.array(ports_list)
-    capacity_array = np.array(capacity_list)
-    max_capacity = ports_array * capacity_array
-    charger_costs = np.array([CHARGER_COST[str(c)] for c in capacity_list])
-    cs_costs = charger_costs * ports_array
-    substation_costs = (SUBSTATION_COST_PER_KW * max_capacity).reshape(-1)
-    installation_costs = np.array([INSTALLATION_COST] * len(ports_list))
-    initial_costs = cs_costs + substation_costs + installation_costs
-    return initial_costs.sum()
-
-def calc_running_costs(cs_config, timeseries_kw)-> float:
-    """年間のランニングコストの計算"""
-    MAINTENANCE_COST_PER_YEAR = 30
-    CONTRACT_COST_PER_KW_MONTH = 1911e-4
-    USAGE_COST_PER_KWH_MONTH = 18e-4
-    CHARGING_PRICE_PER_KWH = 50e-4
-
-    ports_array = np.array(cs_config['ports'])
-    capacity_array = np.array(cs_config['cap_kw'])
-    max_capacity = ports_array * capacity_array
-    maintainance_costs = np.array([MAINTENANCE_COST_PER_YEAR] * len(ports_array))
-    contract_costs = CONTRACT_COST_PER_KW_MONTH * max_capacity.reshape(-1) * 12
-    usage_costs = USAGE_COST_PER_KWH_MONTH * timeseries_kw.sum(axis=0) * 12
-    charging_revenue = CHARGING_PRICE_PER_KWH * timeseries_kw.sum(axis=0) * 12
-    running_costs_yearly = maintainance_costs + contract_costs + usage_costs - charging_revenue
-    return running_costs_yearly.sum()
-
-def calc_diff_trnsprt_costs(vehicle_trip: pd.DataFrame) -> float:
-    """輸送コストの計算"""
-    TIME_VALUE_OF_MONEY = 1118*1e-4  # 時間あたりの価値（円/時）
-    # TIME_VALUE_OF_MONEY = 3000*1e-4
-    RESULT_PATH_NOCS = r'\\wsl.localhost\Ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\simple_shikata\result\no_charging_station'
-    # 充電ありの総旅行時間
-    trip_time_hour = _calc_trip_time(vehicle_trip)
-    charging_trip = vehicle_trip[vehicle_trip['startChargingTime'] > 0]
-    waiting_times_hour = (charging_trip['startChargingTime'] - charging_trip['WaitingEntryTime']) / 3600  # 時間単位に変換
-    total_waiting_times = np.sum(waiting_times_hour)
-    # 充電ありと充電なしの総旅行時間の差分
-    # baseline_trip_time = _calc_baseline_trip_time(RESULT_PATH_NOCS)
-    # diff_trip_time = trip_time - baseline_trip_time
-    diff_trip_time = trip_time_hour - 6068.83 #6073.559 #毎回計算すると時間かかるので固定値に
-
-    # 時間あたりの価値を掛けて輸送コストを計算(待ち時間は2倍の価値を持つと仮定)
-    transport_costs = ((diff_trip_time - total_waiting_times) + 2 * total_waiting_times) * TIME_VALUE_OF_MONEY  # 時間単位に変換
-    # 年間の輸送コストを計算
-    transport_costs_yearly = transport_costs * 365  # 年単位に変換
-    return diff_trip_time, transport_costs_yearly
-
-def _calc_baseline_trip_time(RESULT_PATH_NOCS = r'\\wsl.localhost\Ubuntu-22.04\home\tsato-cnlab\Emates\eMATES_2308\network\simple_shikata\result\no_charging_station') -> float:
-    """CSなし状態の総旅行時間を計算"""
-    vehicle_trip_noCS = load_vehicle_trip(Path(RESULT_PATH_NOCS))
-    # 全ドライバーの総旅行時間（充電なし）
-    baseline_trip_time = _calc_trip_time(vehicle_trip_noCS)
-    return baseline_trip_time
-
-def _calc_trip_time(vehicle_trip: pd.DataFrame) -> float:
-    """CSあり状態の総旅行時間を計算"""
-    total_trip_time = vehicle_trip['EndTime'].fillna(86400) - vehicle_trip['StartTime']
-    total_trip_time = total_trip_time.sum() / 3600  # 時間単位に変換
-    return total_trip_time
 
 def load_vehicle_trip(result_dir: Path) -> pd.DataFrame:
     """走行データの読み込み"""
@@ -294,9 +193,6 @@ def set_cs_placement(trial, worker_id = None) -> dict:
         cslist_data = f.readlines()
     cslist_data = [line.strip() for line in cslist_data if line.strip()]
     csids = [int(line.split(',')[0]) for line in cslist_data if line.strip()]
-    ports_list = [int(line.split(',')[1]) for line in cslist_data if line.strip()]
-    cap_kw_list = [int(line.split(',')[2]) for line in cslist_data if line.strip()]
-
 
     cs_config = {
         'csids': [],
@@ -304,24 +200,15 @@ def set_cs_placement(trial, worker_id = None) -> dict:
         'cap_kw': []
     }
 
-    # 初期パラメータの重複を回避するため、条件を厳格化
-    use_initial_params = trial.number == 0
-
     for i, csid in enumerate(csids):
-        # 最初のワーカーの最初のトライアルのみ元データを使用
-        if use_initial_params:
-            ports = ports_list[i]
-            capacity = cap_kw_list[i]
+        # 設置するかどうかを決定（enqueueされた場合はその値を自動的に使用）
+        ports = trial.suggest_int(f'ports_{i}', 0, 4)
+        if ports > 0:
+            # 設置する場合のみ容量を決定
+            capacity = trial.suggest_categorical(f'capacity_{i}', [50, 100])
         else:
-            # 設置するかどうかを決定
-            ports = trial.suggest_int(f'ports_{i}', 0, 4)
-            if ports > 0:
-                # 設置する場合のみ容量を決定
-                capacity = trial.suggest_categorical(f'capacity_{i}', [50, 100])
-            else:
-                # 設置しない場合は容量は任意（90に固定）
-                capacity = 90
-        # ✅ 修正：辞書に追加
+            # 設置しない場合は容量は任意（90に固定）
+            capacity = 90
 
         cs_config['csids'].append(csid)
         cs_config['ports'].append(ports)

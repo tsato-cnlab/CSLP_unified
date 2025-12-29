@@ -2,17 +2,17 @@
   "save_dir_base": "Z:\\output",
   "experiment_name": "unified",
   "t_hour": 26,
-  "failure_weight": 0,
+  "failure_weight": 0.05,
   "optimization_mode": "unified",
   "objective_function": {
     "name": "weighted_sum",
     "formula": "(1-P) * normal + P * failure",
     "description": "重み付き和（デフォルト）"
   },
-  "batch_size": 1,
-  "outer_parallel": 8,
+  "batch_size": 8,
+  "outer_parallel": 3,
   "workers_per_trial": 9,
-  "total_trials": 500,
+  "total_trials": 3,
   "timeout": 86400,
   "convergence_patience": 1000,
   "convergence_threshold": 0.001,
@@ -46,7 +46,8 @@
     25,
     26
   ],
-  "n_startup_trials": 50,
+  "n_startup_trials": 0,
   "initial_cs_configs": null,
-  "initial_cs_config_file": "data/initial_cs_configs.csv"
+  "initial_cs_config_file": "data/initial_cs_configs.csv",
+  "keep_best_n": 2
 }

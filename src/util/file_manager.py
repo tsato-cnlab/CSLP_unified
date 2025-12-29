@@ -14,18 +14,19 @@ from typing import List, Dict, Optional
 from tqdm import tqdm
 
 
-def manage_pkl_files_after_optimization(study, save_dir: str, keep_best_n: int = 30):
+def manage_pkl_files_after_optimization(study, save_dir: str, keep_best_n: int = 1):
     """最適化完了後のpklファイル管理（並列処理対応版）
 
     設計意図:
     - ベストNトライアルのみを保持してディスク容量を節約
+    - デフォルトでBest1のみ保持（可視化用、傾向分析はOptunaDBで可能）
     - 並列処理でファイル削除を高速化
     - 進捗バーでユーザーに状況を可視化
 
     Args:
         study: Optunaのstudyオブジェクト
         save_dir: 結果保存ディレクトリ
-        keep_best_n: 保持するベストトライアル数
+        keep_best_n: 保持するベストトライアル数（デフォルト: 1）
     """
     print(f"\n🗑️  最適化完了後のファイル整理を開始...")
     print(f"📊 総トライアル数: {len(study.trials)}")
@@ -130,44 +131,70 @@ def _delete_file_safe(file_path: Path) -> bool:
         return False
 
 
-def cleanup_worker_environments(max_workers: int = 100):
+def cleanup_worker_environments():
     """ワーカー環境をクリーンアップ
 
     設計意図:
-    - 並列最適化で作成された一時ディレクトリを削除
-    - シミュレーション結果を削除してディスク容量を節約
+    - 並列最適化で作成された一時ディレクトリを動的に検索して削除
+    - 上限を固定せず、実際に存在するディレクトリのみを対象とする
+    - 並列削除でI/O待ち時間を短縮
     - エラーが発生しても処理を継続（頑健性）
-
-    Args:
-        max_workers: 削除対象のワーカー数の上限
     """
     print(f"\n🧹 ワーカー環境のクリーンアップ開始...")
 
     from src.util.path_manager import get_paths
+    import os
+    import concurrent.futures
 
+    # ベースディレクトリを取得
+    paths = get_paths()
+    shikata_dir = paths["shikata"]
+    parent_dir = os.path.dirname(shikata_dir)
+    base_name = os.path.basename(shikata_dir)
+
+    # 動的にWorkerディレクトリを検索（設計意図: 上限を固定せず、実在するもののみ削除）
+    worker_dirs = [d for d in os.listdir(parent_dir)
+                   if d.startswith(base_name + "_") and os.path.isdir(os.path.join(parent_dir, d))]
+
+    if not worker_dirs:
+        print("✨ 削除対象のワーカーディレクトリなし")
+        return
+
+    print(f"📁 検出されたワーカーディレクトリ: {len(worker_dirs)}個")
+    print(f"⚡ 並列削除を実行中...")
+
+    def delete_dir(worker_dir):
+        """単一ディレクトリを削除する内部関数"""
+        try:
+            full_path = os.path.join(parent_dir, worker_dir)
+            shutil.rmtree(full_path)
+            return (worker_dir, True, None)
+        except Exception as e:
+            return (worker_dir, False, str(e))
+
+    # ThreadPoolExecutorで並列削除（I/Oバウンドなのでスレッドが効果的）
+    max_workers = min(16, len(worker_dirs))  # 最大16並列
     deleted_dirs = 0
     failed_dirs = []
 
-    for worker_id in tqdm(range(1, max_workers + 1), desc="🗑️  ワーカーディレクトリ削除中"):
-        try:
-            paths = get_paths(worker_id)
-            shikata_dir = Path(paths["shikata"])
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(delete_dir, d): d for d in worker_dirs}
 
-            if shikata_dir.exists():
-                # ematesとinstのみ削除（設計意図: opendssディレクトリは保持）
-                result_dir = shikata_dir
-                if result_dir.exists():
-                    shutil.rmtree(result_dir)
-                    deleted_dirs += 1
-        except Exception as e:
-            failed_dirs.append((worker_id, str(e)))
+        for future in tqdm(concurrent.futures.as_completed(futures),
+                          total=len(futures),
+                          desc="🗑️  並列削除中"):
+            worker_dir, success, error = future.result()
+            if success:
+                deleted_dirs += 1
+            else:
+                failed_dirs.append((worker_dir, error))
 
     print(f"✅ クリーンアップ完了: {deleted_dirs}個のディレクトリを削除")
 
     if failed_dirs:
         print(f"⚠️  削除失敗: {len(failed_dirs)}個")
-        for worker_id, error in failed_dirs[:5]:
-            print(f"  Worker {worker_id}: {error}")
+        for worker_dir, error in failed_dirs[:5]:
+            print(f"  {worker_dir}: {error}")
 
 
 def save_optimization_summary(study, save_dir: str, failure_config: dict = None):

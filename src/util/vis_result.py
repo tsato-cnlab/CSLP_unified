@@ -18,7 +18,6 @@ import optuna.visualization as vis
 project_root = os.path.abspath(os.path.join(os.getcwd()))
 if project_root not in sys.path:
     sys.path.append(project_root)
-print(f"プロジェクトルート: {project_root}")
 from src.util.path_manager import get_paths
 
 # 修正されたplot_waiting_times関数（軸範囲を指定可能）

@@ -144,6 +144,9 @@ class UnifiedOptimizationConfig:
     # フォーマット例: [{"name": "均等配置", "placements": [[900000, 1], [900002, 1]]}, ...]
     initial_cs_config_file: Optional[str] = None  # CSVファイルパス
 
+    # === pklファイル管理設定 ===
+    keep_best_n: int = 1
+
     @property
     def save_dir(self) -> Path:
         """実際の保存ディレクトリパスを生成"""
