@@ -4,6 +4,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Literal, Callable
 import json
+import platform
+import os
 
 
 @dataclass
@@ -110,7 +112,7 @@ class UnifiedOptimizationConfig:
     """統合最適化の設定（平常時+故障時）"""
 
     # === 基本設定 ===
-    save_dir_base: str = "/srv/samba/share/output"
+    save_dir_base: str = "auto"  # "auto" でOS自動判定、またはパス文字列
     experiment_name: str = "unified"
     t_hour: int = 26
 
@@ -232,6 +234,11 @@ class UnifiedOptimizationConfig:
             obj_func_data = data['objective_function']
             data['objective_function'] = ObjectiveFunction(**obj_func_data)
 
+        # OS自動判定によるsave_dir_base設定
+        save_dir = data.get('save_dir_base', 'auto')
+        if save_dir == 'auto' or not save_dir:
+            data['save_dir_base'] = cls._get_default_save_dir()
+
         # 初期CS配置をCSVから読み込み（ファイル指定がある場合）
         if 'initial_cs_config_file' in data and data['initial_cs_config_file']:
             csv_path = Path(data['initial_cs_config_file'])
@@ -241,6 +248,15 @@ class UnifiedOptimizationConfig:
                 print(f"⚠️ 初期CS配置ファイルが見つかりません: {csv_path}")
 
         return cls(**data)
+
+    @staticmethod
+    def _get_default_save_dir() -> str:
+        """OS に応じたデフォルトの保存先ディレクトリを返す"""
+        system = platform.system()
+        if system == 'Windows':
+            return 'Z:\\output'
+        else:  # Linux, macOS など
+            return '/srv/samba/share/output'
 
     @staticmethod
     def _load_initial_cs_from_csv(csv_path: Path) -> List[dict]:

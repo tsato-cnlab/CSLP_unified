@@ -1,5 +1,5 @@
 {
-  "save_dir_base": "Z:\\output",
+  "save_dir_base": "auto",
   "experiment_name": "unified",
   "t_hour": 26,
   "failure_weight": 0.05,
