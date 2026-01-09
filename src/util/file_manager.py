@@ -14,7 +14,7 @@ from typing import List, Dict, Optional
 from tqdm import tqdm
 
 
-def manage_pkl_files_after_optimization(study, save_dir: str, keep_best_n: int = 1):
+def manage_pkl_files_after_optimization(study, save_dir: str, keep_best_n: int):
     """最適化完了後のpklファイル管理（並列処理対応版）
 
     設計意図:
