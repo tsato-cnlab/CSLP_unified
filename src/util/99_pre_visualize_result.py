@@ -364,7 +364,8 @@ def plot_cs_placement_map(
 
         # カラーマップ
         unique_kw = sorted(setting_cs_with_pos['cap_kw'].unique())
-        colors_discrete = plt.cm.viridis(np.linspace(0.2, 0.8, len(unique_kw)))
+        cmap = plt.cm.get_cmap('viridis')
+        colors_discrete = cmap(np.linspace(0.2, 0.8, len(unique_kw)))
         color_map = {kw: colors_discrete[i] for i, kw in enumerate(unique_kw)}
         colors = [color_map[kw] for kw in setting_cs_with_pos['cap_kw']]
 
@@ -638,8 +639,8 @@ def generate_results_report(
 
 def run_visualizers_from_config(
     result_dir: Path,
-    result_file: Path,
-    study: optuna.Study = None,
+    result_file: Optional[Path],
+    study: Optional[optuna.Study] = None,
     config_path: Optional[Path] = None,
 ) -> None:
     """設定ファイルに基づいてプラグインを実行
@@ -765,6 +766,19 @@ def compare_scenarios(
     console.print(Panel("[bold green]✨ シナリオ比較完了 ✨[/bold green]", border_style="green"))
     console.print()
 
+    # 投資対効果比較
+    console.print("[yellow]📊 投資対効果比較を生成中...[/yellow]")
+    plot_pareto_from_scenarios(result_dirs, output_dir)
+    console.print()
+    console.print(Panel("[bold green]✨ 投資対効果比較完了 ✨[/bold green]", border_style="green"))
+    console.print()
+
+    # CSVエクスポート（P値ごとのサマリー）
+    console.print("[yellow]📄 サマリーCSVを出力中...[/yellow]")
+    csv_path = output_dir / "scenario_summary.csv"
+    comparator.export_summary_csv(csv_path)
+    console.print(f"[green]✅ サマリーCSVを保存: {csv_path}[/green]")
+    console.print()
 
 def main():
     """コマンドラインエントリポイント（サブコマンド対応）"""
@@ -998,6 +1012,305 @@ def main():
             save_png=not args.no_png,
             save_html=not args.no_html,
         )
+
+
+def plot_pareto_curve_cost_vs_wait(
+    p_values: list[int] = None,
+    costs: list[float] = None,
+    wait_times: list[float] = None,
+    save_path: Optional[Path] = None,
+    title: str = "コスト vs 待ち時間 パレートフロンティア",
+    show_plot: bool = True,
+) -> None:
+    """コストと待ち時間のトレードオフをパレート曲線として可視化
+
+    EV充電インフラのシミュレーション結果から、故障重みパラメータ(P値)ごとの
+    設置コストと平均待ち時間の関係を散布図＋折れ線で表示する。
+    費用対効果の良い「エルボーポイント」を視覚的に判断できる。
+
+    Args:
+        p_values: 故障重みパラメータのリスト（例: [0, 20, 40, 60, 80, 100]）
+        costs: 設置コストのリスト（万円）
+        wait_times: 平均待ち時間のリスト（分）
+        save_path: 保存先パス（Noneの場合は保存しない）
+        title: グラフタイトル
+        show_plot: プロットを表示するかどうか
+
+    Example:
+        >>> plot_pareto_curve_cost_vs_wait()  # ダミーデータで実行
+        >>> plot_pareto_curve_cost_vs_wait(
+        ...     p_values=[0, 50, 100],
+        ...     costs=[8000, 12000, 15000],
+        ...     wait_times=[12.0, 7.5, 5.0],
+        ...     save_path=Path("pareto_curve.png")
+        ... )
+    """
+    # ダミーデータ（引数が指定されない場合）
+    if p_values is None:
+        p_values = [0, 20, 40, 60, 80, 100]
+    if costs is None:
+        # Pが増えるほど基本的に増加するが、一部ノイズを含む
+        costs = [8000, 11000, 14500, 16000, 11500, 14000]
+    if wait_times is None:
+        # Pが増えるほど基本的に減少するが、一部ノイズを含む
+        wait_times = [10.5, 9.0, 8.5, 9.2, 6.0, 5.5]
+
+    # データ検証
+    if not (len(p_values) == len(costs) == len(wait_times)):
+        console.print("[red]❌ データの長さが一致しません[/red]")
+        return
+
+    # プロット設定
+    fig, ax = plt.subplots(figsize=(10, 7))
+
+    # 散布図 + 折れ線（P値の順序でプロット）
+    # コストでソートして折れ線を引く（パレートフロンティアらしく見せる）
+    sorted_indices = np.argsort(costs)
+    sorted_costs = [costs[i] for i in sorted_indices]
+    sorted_wait_times = [wait_times[i] for i in sorted_indices]
+    sorted_p_values = [p_values[i] for i in sorted_indices]
+
+    # 折れ線（パレートフロンティア風）
+    ax.plot(
+        sorted_costs, sorted_wait_times,
+        'o-',
+        color='#2196F3',
+        linewidth=2,
+        markersize=12,
+        markerfacecolor='#1565C0',
+        markeredgecolor='white',
+        markeredgewidth=2,
+        label='シミュレーション結果',
+        zorder=3,
+    )
+
+    # 各点にP値のアノテーションを追加
+    for i, (cost, wait, p) in enumerate(zip(sorted_costs, sorted_wait_times, sorted_p_values)):
+        # 外れ値（コストが高いのに待ち時間が減っていない）を検出
+        is_outlier = False
+        if i > 0:
+            prev_cost, prev_wait = sorted_costs[i - 1], sorted_wait_times[i - 1]
+            # コストが増えているのに待ち時間も増えている場合
+            if cost > prev_cost and wait > prev_wait:
+                is_outlier = True
+
+        # アノテーションのスタイル
+        bbox_color = '#FFCDD2' if is_outlier else '#E3F2FD'
+        text_color = '#C62828' if is_outlier else '#1565C0'
+
+        ax.annotate(
+            f'P={p}%',
+            (cost, wait),
+            xytext=(8, 12),
+            textcoords='offset points',
+            fontsize=10,
+            fontweight='bold',
+            color=text_color,
+            bbox=dict(
+                boxstyle='round,pad=0.3',
+                facecolor=bbox_color,
+                edgecolor=text_color,
+                alpha=0.9,
+            ),
+            zorder=4,
+        )
+
+    # 理想的なトレードオフ領域を示す矢印（参考）
+    ax.annotate(
+        '',
+        xy=(min(costs) * 0.95, min(wait_times) * 0.95),
+        xytext=(max(costs) * 0.9, max(wait_times) * 0.9),
+        arrowprops=dict(
+            arrowstyle='->',
+            color='gray',
+            lw=1.5,
+            ls='--',
+            alpha=0.5,
+        ),
+    )
+    ax.text(
+        (min(costs) + max(costs)) / 2 * 0.85,
+        (min(wait_times) + max(wait_times)) / 2 * 0.85,
+        '理想的な改善方向',
+        fontsize=9,
+        color='gray',
+        alpha=0.7,
+        style='italic',
+    )
+
+    # 軸ラベル・タイトル
+    ax.set_xlabel('総設置コスト（万円）', fontsize=12, fontweight='bold')
+    ax.set_ylabel('平均待ち時間（分）', fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+
+    # グリッド
+    ax.grid(True, alpha=0.4, linestyle='-', linewidth=0.5)
+    ax.set_axisbelow(True)
+
+    # 凡例
+    ax.legend(loc='upper right', fontsize=10)
+
+    # 軸範囲の調整（余白を持たせる）
+    x_margin = (max(costs) - min(costs)) * 0.15
+    y_margin = (max(wait_times) - min(wait_times)) * 0.15
+    ax.set_xlim(min(costs) - x_margin, max(costs) + x_margin)
+    ax.set_ylim(min(wait_times) - y_margin, max(wait_times) + y_margin)
+
+    plt.tight_layout()
+
+    # 保存
+    if save_path is not None:
+        save_path = Path(save_path)
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        console.print(f"[green]✅ パレート曲線を保存: {save_path}[/green]")
+
+    # 表示
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+
+
+def demo_pareto_curve():
+    """パレート曲線のデモ実行（ダミーデータ使用）"""
+    console.print()
+    console.rule("[bold cyan]パレート曲線デモ[/bold cyan]", style="cyan")
+    console.print()
+
+    # ダミーデータの説明
+    console.print("[yellow]📊 ダミーデータでパレート曲線を生成します[/yellow]")
+    console.print()
+
+    table = Table(title="ダミーデータ", box=box.ROUNDED)
+    table.add_column("P値 (%)", style="cyan", justify="center")
+    table.add_column("設置コスト (万円)", style="green", justify="right")
+    table.add_column("平均待ち時間 (分)", style="magenta", justify="right")
+
+    p_values = [0, 20, 40, 60, 80, 100]
+    costs = [8000, 11000, 14500, 16000, 11500, 14000]
+    wait_times = [10.5, 9.0, 8.5, 9.2, 6.0, 5.5]
+
+    for p, c, w in zip(p_values, costs, wait_times):
+        table.add_row(str(p), f"{c:,}", f"{w:.1f}")
+
+    console.print(table)
+    console.print()
+
+    # プロット生成
+    plot_pareto_curve_cost_vs_wait(
+        p_values=p_values,
+        costs=costs,
+        wait_times=wait_times,
+        title="EV充電インフラ コスト vs 待ち時間 トレードオフ分析",
+    )
+
+
+def plot_pareto_from_scenarios(
+    result_dirs: list[Path],
+    save_path: Optional[Path] = None,
+    title: str = "投資コスト vs 平均待ち時間 トレードオフ",
+    show_plot: bool = True,
+) -> None:
+    """複数のP値ディレクトリから実データを取得してパレート曲線を描画
+
+    Args:
+        result_dirs: P値ごとの結果ディレクトリのリスト（例: [Path("unified_P00"), ...]）
+        save_path: 保存先パス（Noneの場合は保存しない）
+        title: グラフタイトル
+        show_plot: プロットを表示するかどうか
+
+    Example:
+        >>> from pathlib import Path
+        >>> import glob
+        >>> dirs = [Path(d) for d in glob.glob("Z:/output/unified_P*")]
+        >>> plot_pareto_from_scenarios(dirs, save_path=Path("pareto_real.png"))
+    """
+    from src.util.scenario_compare import ScenarioComparator
+
+    if not result_dirs:
+        console.print("[red]❌ 結果ディレクトリが指定されていません[/red]")
+        return
+
+    console.print()
+    console.rule("[bold cyan]パレート曲線（実データ）[/bold cyan]", style="cyan")
+    console.print()
+
+    # 結果収集
+    console.print(f"[yellow]📊 {len(result_dirs)}個のディレクトリから結果を収集中...[/yellow]")
+    comparator = ScenarioComparator(result_dirs)
+    comparator.collect_all_results()
+
+    if not comparator.p_value_results:
+        console.print("[red]❌ 有効な結果が見つかりませんでした[/red]")
+        return
+
+    # P値・投資コスト・平均待ち時間を抽出
+    p_values = []
+    initial_costs = []
+    mean_wait_times = []
+
+    for pv_result in comparator.p_value_results:
+        # normalシナリオの結果を使用
+        if pv_result.normal_result:
+            p_percent = int(pv_result.p_value * 100)
+            p_values.append(p_percent)
+            initial_costs.append(pv_result.normal_result.initial_cost)
+            # 秒から分に変換
+            mean_wait_times.append(pv_result.normal_result.mean_wait_time / 60)
+
+    if not p_values:
+        console.print("[red]❌ normalシナリオの結果が見つかりませんでした[/red]")
+        return
+
+    # データ表示
+    table = Table(title="収集データ", box=box.ROUNDED)
+    table.add_column("P値 (%)", style="cyan", justify="center")
+    table.add_column("投資コスト (万円)", style="green", justify="right")
+    table.add_column("平均待ち時間 (分)", style="magenta", justify="right")
+
+    for p, c, w in zip(p_values, initial_costs, mean_wait_times):
+        table.add_row(str(p), f"{c:,.0f}", f"{w:.2f}")
+
+    console.print(table)
+    console.print()
+
+    # パレート曲線描画
+    plot_pareto_curve_cost_vs_wait(
+        p_values=p_values,
+        costs=initial_costs,
+        wait_times=mean_wait_times,
+        save_path=save_path,
+        title=title,
+        show_plot=show_plot,
+    )
+
+
+def run_pareto_from_pattern(pattern: str, output_path: Optional[str] = None, show: bool = True) -> None:
+    """パターンマッチでディレクトリを検索してパレート曲線を描画（CLIヘルパー）
+
+    Args:
+        pattern: globパターン（例: "Z:/output/unified_P*"）
+        output_path: 出力パス（Noneで保存しない）
+        show: プロットを表示するか
+    """
+    import glob
+
+    matched_dirs = [Path(d) for d in glob.glob(pattern) if Path(d).is_dir()]
+
+    if not matched_dirs:
+        console.print(f"[red]❌ パターン '{pattern}' にマッチするディレクトリがありません[/red]")
+        return
+
+    console.print(f"[green]✅ {len(matched_dirs)}個のディレクトリが見つかりました[/green]")
+    for d in sorted(matched_dirs):
+        console.print(f"  - {d.name}")
+
+    save_path = Path(output_path) if output_path else None
+    plot_pareto_from_scenarios(
+        result_dirs=matched_dirs,
+        save_path=save_path,
+        show_plot=show,
+    )
 
 
 if __name__ == "__main__":

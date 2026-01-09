@@ -963,13 +963,13 @@ def _run_failure_simulation_for_visualization(
         console.print(f"[green]📊 ワーストケース: 故障CS {worst_result['failure_cs_idx']} "
                      f"(コスト: {worst_result['cost']:.2f}万円)[/green]")
 
-        # ワーストケース以外を削除
-        for result in results:
-            if result['filepath'] != worst_file:
-                try:
-                    result['filepath'].unlink()
-                except Exception:
-                    pass
+        # ワーストケース以外を削除（無効化：全故障シナリオを保持）
+        # for result in results:
+        #     if result['filepath'] != worst_file:
+        #         try:
+        #             result['filepath'].unlink()
+        #         except Exception:
+        #             pass
 
         return worst_file
 

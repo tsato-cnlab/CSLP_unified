@@ -267,6 +267,70 @@ class ScenarioComparator:
 
         return pd.DataFrame(rows)
 
+    def export_summary_csv(self, output_path: Path) -> None:
+        """P値ごとのサマリーデータをCSVに出力
+
+        各P値について、平常時(normal)とワースト故障ケース(worst_failure)の
+        コスト・旅行時間・待ち時間などをCSV形式で出力する。
+
+        Args:
+            output_path: 出力先CSVファイルのパス
+
+        出力されるCSVの列:
+            - p_percent: P値（%）
+            - scenario: "normal" or "worst_failure"
+            - initial_cost: 投資コスト（万円）
+            - running_cost: 年間運用コスト（万円）
+            - user_cost: ユーザーコスト（万円）
+            - total_cost: 総コスト（万円）
+            - mean_wait_time_min: 平均待ち時間（分）
+            - wait_time_95p_min: 95パーセンタイル待ち時間（分）
+            - num_cs: 設置CS数
+            - total_ports: 総ポート数
+        """
+        rows = []
+
+        for pv_result in self.p_value_results:
+            p_percent = int(pv_result.p_value * 100)
+
+            # 平常時(normal)
+            if pv_result.normal_result:
+                nr = pv_result.normal_result
+                total_ports = sum(cs['ports'] for cs in nr.cs_placements)
+                rows.append({
+                    'p_percent': p_percent,
+                    'scenario': 'normal',
+                    'initial_cost': nr.initial_cost,
+                    'running_cost': nr.running_cost,
+                    'user_cost': nr.user_cost,
+                    'total_cost': nr.total_cost,
+                    'mean_wait_time_min': nr.mean_wait_time / 60,
+                    'wait_time_95p_min': nr.wait_time_95p / 60,
+                    'num_cs': len(nr.cs_placements),
+                    'total_ports': total_ports,
+                })
+
+            # ワースト故障ケース（total_costが最大のもの）
+            if pv_result.failure_results:
+                worst = max(pv_result.failure_results, key=lambda r: r.total_cost)
+                total_ports = sum(cs['ports'] for cs in worst.cs_placements)
+                rows.append({
+                    'p_percent': p_percent,
+                    'scenario': 'worst_failure',
+                    'initial_cost': worst.initial_cost,
+                    'running_cost': worst.running_cost,
+                    'user_cost': worst.user_cost,
+                    'total_cost': worst.total_cost,
+                    'mean_wait_time_min': worst.mean_wait_time / 60,
+                    'wait_time_95p_min': worst.wait_time_95p / 60,
+                    'num_cs': len(worst.cs_placements),
+                    'total_ports': total_ports,
+                })
+
+        df = pd.DataFrame(rows)
+        df.to_csv(output_path, index=False, encoding='utf-8-sig')
+        print(f"✅ サマリーCSVを出力: {output_path}")
+
 
 def find_result_dirs_by_pattern(pattern: str) -> List[Path]:
     """パターンにマッチするディレクトリを検索

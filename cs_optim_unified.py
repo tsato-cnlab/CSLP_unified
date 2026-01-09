@@ -762,7 +762,7 @@ def run_evaluate_only_mode(config: UnifiedOptimizationConfig, initial_config_nam
 
             print(f"\n✅ 評価完了: {eval_cfg['name']}")
             print(f"   統合コスト: {unified_cost:,.2f}万円")
-            if details:
+            if details and isinstance(details, dict):
                 print(f"   平常時コスト: {details.get('normal_cost', 'N/A')}")
                 print(f"   最悪故障コスト: {details.get('worst_failure_cost', 'N/A')}")
 
