@@ -38,6 +38,26 @@ from src.util.cost_calculator import (
     DISCOUNT_RATE,
 )
 
+import warnings
+import logging
+
+import matplotlib
+# matplotlibのフォント警告を完全に抑制
+warnings.filterwarnings('ignore', category=UserWarning, module='matplotlib')
+warnings.filterwarnings('ignore', message='findfont:.*')
+logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
+# 日本語フォント設定（Windows環境対応）
+try:
+    import japanize_matplotlib  # noqa: F401
+except ImportError:
+    pass
+
+# 日本語フォントを設定（Windows環境で利用可能なフォントを優先）
+matplotlib.rcParams['font.family'] = ['sans-serif']
+matplotlib.rcParams['font.sans-serif'] = ['Yu Gothic', 'MS Gothic', 'BIZ UDGothic', 'Meiryo', 'DejaVu Sans']
+matplotlib.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け対策
+
 console = Console()
 
 
