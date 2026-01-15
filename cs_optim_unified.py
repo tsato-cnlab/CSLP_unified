@@ -54,6 +54,26 @@ file_write_lock = Lock()
 # グローバル変数（multiprocessing用）
 CONFIG: Optional[UnifiedOptimizationConfig] = None
 
+# 計算済みの実効パラメータを記録するセット（重複検出用）
+visited_effective_params: set[tuple] = set()
+
+
+def get_effective_key(cs_config: dict) -> tuple:
+    """CS配置から実効パラメータキーを生成
+
+    ports=0の箇所はcapacityを無視（-1で正規化）することで、
+    シミュレーション結果に影響しないパラメータ違いを同一とみなす。
+
+    Returns:
+        tuple: ((csid, ports, cap_or_-1), ...)
+    """
+    key_list = []
+    for csid, ports, cap in zip(cs_config['csids'], cs_config['ports'], cs_config['cap_kw']):
+        if ports > 0:
+            key_list.append((csid, ports, cap))
+        else:
+            key_list.append((csid, 0, -1))
+    return tuple(key_list)
 
 def get_initial_cs_params(config: UnifiedOptimizationConfig) -> list[dict]:
     """初期パラメータセットを生成（CSVから読み込み）
@@ -404,15 +424,38 @@ def run_parallel_optimization_batch_unified(study, outer_parallel):
 
     print(f"\n🔥 統合最適化バッチ処理開始 (P={CONFIG.failure_weight}, 目的関数={CONFIG.objective_function.name})")
 
-    # トライアル生成
+    # トライアル生成（重複検出時はリトライ）
+    global visited_effective_params
+    total_skipped = 0  # 累計スキップ数
+    MAX_RETRY = 10  # 重複時のリトライ上限
+
     batch_trials = []
     batch_configs = []
 
-    for i in range(outer_parallel):
+    i = 0
+    while i < outer_parallel:
         trial = study.ask()
         config = set_cs_placement(trial)
+
+        # 実効パラメータによる重複チェック
+        effective_key = get_effective_key(config)
+        retry_count = 0
+        while effective_key in visited_effective_params and retry_count < MAX_RETRY:
+            print(f"↩️  Trial {trial.number}: 重複検出、別の解を探索中... (リトライ{retry_count+1})")
+            study.tell(trial, state=optuna.trial.TrialState.PRUNED)
+            total_skipped += 1
+            trial = study.ask()
+            config = set_cs_placement(trial)
+            effective_key = get_effective_key(config)
+            retry_count += 1
+
+        if retry_count >= MAX_RETRY:
+            print(f"⚠️  Trial {trial.number}: リトライ上限到達、そのまま実行")
+
+        visited_effective_params.add(effective_key)
         batch_trials.append(trial)
         batch_configs.append(config)
+        i += 1
 
     # パラメータ確認
     print("\n🔍 バッチ内パラメータ:")
@@ -549,7 +592,7 @@ def run_parallel_optimization_batch_unified(study, outer_parallel):
             print(f"❌ Trial {trial.number} の結果登録でエラー: {e}")
             continue
 
-    print(f"✅ バッチ完了: {successful_registrations}/{len(batch_results)}件の結果をstudyに登録")
+    print(f"✅ バッチ完了: {successful_registrations}件登録, 累計{total_skipped}件スキップ")
     return successful_registrations
 
 
