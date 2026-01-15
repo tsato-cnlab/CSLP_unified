@@ -40,6 +40,11 @@ matplotlib.rcParams['font.family'] = ['sans-serif']
 matplotlib.rcParams['font.sans-serif'] = ['Yu Gothic', 'MS Gothic', 'BIZ UDGothic', 'Meiryo', 'DejaVu Sans']
 matplotlib.rcParams['axes.unicode_minus'] = False  # マイナス記号の文字化け対策
 
+# Linux環境の場合
+if sys.platform == 'linux':
+    matplotlib.rcParams['font.family'] = ['sans-serif']
+    matplotlib.rcParams['font.sans-serif'] = ['DejaVu Sans']
+
 # プロジェクトルートの設定
 project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:

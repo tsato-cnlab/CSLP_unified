@@ -70,21 +70,22 @@ def load_timeseries_data(emates_dir: Path, all_candidate_csids: List[int]) -> Ti
     設計意図:
     - タプルではなくTimeSeriesDataを返して名前付きフィールド化
     - 型ヒントで戻り値の構造を明示
+    - バイナリファイル優先、CSVフォールバック対応
     """
-    """候補地すべてを含む時系列データ読み込み"""
+    import json
+    
+    # バイナリファイルのパスを確認
+    bin_path = emates_dir / "charging_info.bin"
+    meta_path = emates_dir / "charging_info.bin.meta.json"
+    
+    if bin_path.exists() and meta_path.exists():
+        # バイナリ読み込み（高速）
+        combined = _load_from_binary(bin_path, meta_path)
+    else:
+        # CSVフォールバック（従来方式）
+        combined = _load_from_csv(emates_dir)
 
-    t_files = sorted(emates_dir.glob("T*.csv"))
-
-    dfs = []
-    for f in t_files:
-        df = pd.read_csv(f)
-        elapsed = int(f.stem[1:])  # T123456 -> 123456
-        df['ElapsedTime'] = elapsed
-        dfs.append(df)
-
-    combined = pd.concat(dfs, ignore_index=True)
-
-    # ピボットで集約（既存データ）
+    # ピボットで集約
     cap_kw = combined.pivot_table(
         index='ElapsedTime',
         columns='Csid',
@@ -99,17 +100,82 @@ def load_timeseries_data(emates_dir: Path, all_candidate_csids: List[int]) -> Ti
         fill_value=0
     )
 
-    # 候補地統合（既存データ）
+    # 候補地統合
     cap_kw_integrated = integrate_csid_data(cap_kw)
     cap_kw_integrated = integrate_csid_data_extended(cap_kw_integrated, all_candidate_csids)
     waiting_line_integrated = integrate_csid_data(waiting_line)
     waiting_line_integrated = integrate_csid_data_extended(waiting_line_integrated, all_candidate_csids)
 
-    # TimeSeriesDataオブジェクトを返す（設計意図: タプルより型安全）
+    # TimeSeriesDataオブジェクトを返す
     return TimeSeriesData(
         cap_kw=sort_columns_by_csid(cap_kw_integrated),
         waiting_line=sort_columns_by_csid(waiting_line_integrated)
     )
+
+
+def _load_from_binary(bin_path: Path, meta_path: Path) -> pd.DataFrame:
+    """バイナリファイルからデータを読み込み、CSVと同等のDataFrameを返す"""
+    import json
+    
+    # メタデータ読み込み
+    with open(meta_path, 'r') as f:
+        meta = json.load(f)
+    
+    cols_per_record = meta['columns_per_record']
+    time_slots = meta['structure']['time_slots']
+    total_chargers = meta['structure']['total_chargers_cs']
+    num_ncs = meta['structure']['num_ncs_nodes']
+    
+    # バイナリ読み込み
+    data = np.fromfile(bin_path, dtype=np.float64)
+    num_records = len(data) // cols_per_record
+    data = data.reshape(num_records, cols_per_record)
+    
+    # DataFrameに変換
+    rows = []
+    # 各充電器/NCSノードあたりのカラム数: type + csid + cgrid + cap_kw + waitingLine + volumes
+    cols_per_charger = 5 + time_slots
+    
+    for record in data:
+        elapsed_time = int(record[0])
+        idx = 1  # timeの次から開始
+        
+        # CS + NCS の全エントリを処理
+        num_entries = total_chargers + num_ncs
+        for _ in range(num_entries):
+            entry_type = record[idx]
+            csid = int(record[idx + 1])
+            cgrid = int(record[idx + 2])
+            cap_kw = record[idx + 3]
+            waiting_line = int(record[idx + 4])
+            # volumes は現在使用しないが、スキップ
+            
+            rows.append({
+                'ElapsedTime': elapsed_time,
+                'Type': 'F' if entry_type == 1.0 else 'N',
+                'Csid': csid,
+                'Cgrid': cgrid,
+                'Cap_kW': cap_kw,
+                'waitingLine': waiting_line
+            })
+            idx += cols_per_charger
+    
+    return pd.DataFrame(rows)
+
+
+def _load_from_csv(emates_dir: Path) -> pd.DataFrame:
+    """従来のCSV読み込み（フォールバック用）"""
+    t_files = sorted(emates_dir.glob("T*.csv"))
+    
+    dfs = []
+    for f in t_files:
+        df = pd.read_csv(f)
+        elapsed = int(f.stem[1:])  # T123456 -> 123456
+        df['ElapsedTime'] = elapsed
+        dfs.append(df)
+    
+    return pd.concat(dfs, ignore_index=True)
+
 
 def integrate_csid_data_extended(time_series_df: pd.DataFrame, all_candidate_csids: list) -> pd.DataFrame:
     """候補地すべてを含むCSID統合"""

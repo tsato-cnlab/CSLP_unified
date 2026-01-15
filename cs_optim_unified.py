@@ -892,6 +892,8 @@ def print_config_summary(config: UnifiedOptimizationConfig):
 
 
 if __name__ == "__main__":
+    # 実行時間を記録
+    start_time = time.time()
     print("\n🚀 統合最適化システム起動")
 
     # 設定読み込み
@@ -1071,3 +1073,5 @@ if __name__ == "__main__":
     print(f"\n{'='*60}")
     print("👋 統合最適化システム終了")
     print(f"{'='*60}\n")
+    end_time = time.time()
+    print(f"実行時間: {end_time - start_time}秒")
