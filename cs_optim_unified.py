@@ -157,7 +157,6 @@ def run_single_failure_scenario(task_data):
     """
     cs_config, failure_cs_idx, trial_number, worker_id, save_dir, combination_id, config = task_data
     scenario_type = "正常ケース" if failure_cs_idx is None else f"故障CS{failure_cs_idx}"
-    print(f"🚀 Worker{worker_id}: {scenario_type} 開始")
 
     try:
         # 制約チェック
@@ -185,7 +184,6 @@ def run_single_failure_scenario(task_data):
             FAILURE_TIME=config.failure_time,
             file_write_lock=file_write_lock
         )
-        print(f"✅ Worker{worker_id}: 故障情報作成完了")
 
         # CS設定書き込み
         csList_file = worker_paths["csList"]
@@ -592,7 +590,11 @@ def run_parallel_optimization_batch_unified(study, outer_parallel):
             print(f"❌ Trial {trial.number} の結果登録でエラー: {e}")
             continue
 
-    print(f"✅ バッチ完了: {successful_registrations}件登録, 累計{total_skipped}件スキップ")
+    # COMPLETE/PRUNED/総Trial数を表示
+    total_trials_in_study = len(study.trials)
+    complete_count = len([t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE])
+    pruned_count = len([t for t in study.trials if t.state == optuna.trial.TrialState.PRUNED])
+    print(f"✅ バッチ完了: {successful_registrations}件登録, 累計{total_skipped}件スキップ (総Trial: {total_trials_in_study}, COMPLETE: {complete_count}, PRUNED: {pruned_count})")
     return successful_registrations
 
 
@@ -659,7 +661,9 @@ def run_optimization_with_unified_objective(study, config: UnifiedOptimizationCo
 
             completed_trials_count = len([t for t in study.trials
                                           if t.state == optuna.trial.TrialState.COMPLETE])
-            print(f"📈 進捗更新: {completed_trials_count}/{config.total_trials} 完了")
+            pruned_trials_count = len([t for t in study.trials
+                                       if t.state == optuna.trial.TrialState.PRUNED])
+            print(f"📈 進捗更新: {completed_trials_count}/{config.total_trials} COMPLETE (総Trial: {len(study.trials)}, PRUNED: {pruned_trials_count})")
 
     except KeyboardInterrupt:
         print("\n⚠️ ユーザーによる中断")
