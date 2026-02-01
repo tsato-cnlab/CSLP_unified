@@ -73,7 +73,15 @@ def evaluation_total_costs(result_file: str) -> Tuple[float, dict]:
         (waiting_penalty / ((1 + DISCOUNT_RATE) ** i)) for i in range(1, YEAR + 1)
     )
 
-    total_costs = initial_costs + running_costs_discounted + additional_costs_discounted + waiting_penalty_discounted
+    # 未充電車両ペナルティ
+    uncharged_penalty = calc_uncharged_penalty(vehicle_trip)
+    uncharged_penalty_discounted = sum(
+        (uncharged_penalty / ((1 + DISCOUNT_RATE) ** i)) for i in range(1, YEAR + 1)
+    )
+
+    total_costs = (initial_costs + running_costs_discounted + 
+                   additional_costs_discounted + waiting_penalty_discounted +
+                   uncharged_penalty_discounted)
 
     return total_costs, emates_result
 
@@ -193,6 +201,65 @@ def calc_ending_waiting_penalty(waiting_line: pd.DataFrame) -> float:
         print(f"終了時待ち台数: {final_waiting:.0f} 台")
         print(f"推定待ち時間: {estimated_wait_hours:.1f} 時間")
         print(f"待ち台数ペナルティ: {penalty_yearly:.1f} 万円/年")
+    
+    return penalty_yearly
+
+
+def calc_uncharged_penalty(vehicle_trip: pd.DataFrame) -> float:
+    """充電すべきなのに充電していない車両のペナルティ計算
+    
+    設計意図:
+    - 待ち行列ペナルティと同様の時間換算ロジック
+    - 充電機会損失 + 顧客満足度低下を反映
+    - InitialSOC≤20%の車両が充電していない場合にペナルティ
+    
+    Args:
+        vehicle_trip: 車両トリップデータ（InitialSOCカラムを含む）
+    
+    Returns:
+        年間ペナルティ（万円）
+    """
+    if vehicle_trip is None or vehicle_trip.empty:
+        return 0.0
+    
+    # InitialSOC列が存在しない場合は0を返す
+    if 'InitialSOC' not in vehicle_trip.columns:
+        print("Warning: InitialSOC列が見つかりません。未充電ペナルティは0です。")
+        return 0.0
+    
+    # 1. InitialSOC≤20%の車両を特定
+    SOC_THRESHOLD = 0.20
+    target_vehicles = vehicle_trip[
+        (vehicle_trip['InitialSOC'] <= SOC_THRESHOLD) & 
+        (vehicle_trip['InitialSOC'] >= 0)
+    ]
+    target_count = len(target_vehicles)
+    
+    if target_count == 0:
+        return 0.0
+    
+    # 2. うち充電していない車両を抽出
+    uncharged = target_vehicles[
+        (target_vehicles['startChargingTime'] == 0) | 
+        (target_vehicles['startChargingTime'].isna())
+    ]
+    uncharged_count = len(uncharged)
+    
+    if uncharged_count == 0:
+        print(f"充電対象車両: {target_count} 台")
+        print(f"未充電車両: 0 台 (充電率100%)")
+        return 0.0
+    
+    # 3. ペナルティ計算
+    # 未充電車両 × 平均充電時間 × 時間価値 × 2倍（顧客不満）
+    estimated_loss_hours = uncharged_count * AVG_CHARGING_TIME
+    penalty_daily = estimated_loss_hours * 2 * TIME_VALUE_OF_MONEY
+    penalty_yearly = penalty_daily * 365
+    
+    print(f"充電対象車両（InitialSOC≤{SOC_THRESHOLD*100:.0f}%）: {target_count} 台")
+    print(f"未充電車両: {uncharged_count} 台 ({uncharged_count/target_count*100:.1f}%)")
+    print(f"推定損失時間: {estimated_loss_hours:.1f} 時間")
+    print(f"未充電ペナルティ: {penalty_yearly:.1f} 万円/年")
     
     return penalty_yearly
 
