@@ -14,52 +14,20 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
-import requests
 from datetime import datetime
 
-
-def send_line_message(message: str, access_token: Optional[str] = None, user_id: Optional[str] = None) -> bool:
-    """LINE Messaging APIで通知を送信
-
-    Args:
-        message: 送信するメッセージ
-        access_token: LINE Messaging APIのChannel Access Token（省略時は環境変数から取得）
-        user_id: 送信先のユーザーIDまたはグループID（省略時は環境変数から取得）
-
-    Returns:
-        送信に成功したかどうか
-    """
-    if access_token is None:
-        access_token = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN')
-
-    if user_id is None:
-        user_id = os.environ.get('LINE_USER_ID')
-
-    if not access_token or not user_id:
+# Discord通知ヘルパー
+try:
+    from notify_helper import send_discord_notification, COLOR_SUCCESS, COLOR_ERROR
+except ImportError:
+    # notify_helper.pyが見つからない場合は通知を無効化
+    def send_discord_notification(*args, **kwargs):
         return False
+    COLOR_SUCCESS = 0x43B581
+    COLOR_ERROR = 0xF04747
 
-    url = "https://api.line.me/v2/bot/message/push"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "to": user_id,
-        "messages": [
-            {
-                "type": "text",
-                "text": message
-            }
-        ]
-    }
 
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        return response.status_code == 200
-    except Exception as e:
-        print(f"⚠️  LINE通知の送信に失敗: {e}")
-        return False
+
 
 
 def run_optimization_with_weight(base_config_path: Path, weight: float) -> bool:
@@ -91,7 +59,8 @@ def run_optimization_with_weight(base_config_path: Path, weight: float) -> bool:
         result = subprocess.run(
             ["python", "cs_optim_unified.py", "--config", str(temp_config_path)],
             check=True,
-            cwd=base_config_path.parent  # プロジェクトルート
+            # cwd=base_config_path.parent  # プロジェクトルート
+            cwd="/home/oums/Desktop/emates"
         )
 
         print(f"\n✅ 完了: failure_weight = {weight:.2f}")
@@ -225,25 +194,39 @@ def main():
     print(f"\n成功: {success_count}/{total_count}")
     print("="*60 + "\n")
 
-    # LINE通知を送信
+    # Discord通知を送信
     end_time = datetime.now()
     elapsed_time = end_time - start_time
     hours, remainder = divmod(int(elapsed_time.total_seconds()), 3600)
     minutes, seconds = divmod(remainder, 60)
+    elapsed_str = f"{hours}時間{minutes}分{seconds}秒"
 
-    notification_message = (
-        f"🔔 最適化バッチ実行完了\n"
-        f"終了時刻: {end_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        f"経過時間: {hours}時間{minutes}分{seconds}秒\n"
-        f"実行数: {total_count}\n"
-        f"成功: {success_count}\n"
-        f"失敗: {total_count - success_count}"
-    )
+    # 成功・失敗を判定
+    failed_count = total_count - success_count
 
-    if send_line_message(notification_message):
-        print("📱 LINE通知を送信しました")
+    if failed_count == 0:
+        title = "✅ 最適化バッチ実行完了"
+        color = COLOR_SUCCESS
+        description = "全てのシミュレーションが正常に完了しました"
     else:
-        print("ℹ️  LINE通知は設定されていません（環境変数 LINE_CHANNEL_ACCESS_TOKEN と LINE_USER_ID を設定すると通知が有効になります）")
+        title = "❌ 最適化バッチ実行完了（エラーあり）"
+        color = COLOR_ERROR
+        # 失敗したweightを抽出
+        failed_weights = [w for w, success in sorted(results.items()) if not success]
+        failed_weights_str = ", ".join(f"{w:.2f}" for w in failed_weights)
+        description = f"一部のシミュレーションでエラーが発生しました\n**失敗したweight**: {failed_weights_str}"
+
+    fields = [
+        {"name": "⏱️ 実行時間", "value": elapsed_str, "inline": True},
+        {"name": "📊 実行数", "value": str(total_count), "inline": True},
+        {"name": "✅ 成功", "value": str(success_count), "inline": True},
+        {"name": "❌ 失敗", "value": str(failed_count), "inline": True},
+    ]
+
+    if send_discord_notification(title, description, color, fields):
+        print("📱 Discord通知を送信しました")
+    else:
+        print("ℹ️  Discord通知は設定されていません（環境変数 DISCORD_WEBHOOK_URL を設定すると通知が有効になります）")
 
 
 if __name__ == "__main__":
