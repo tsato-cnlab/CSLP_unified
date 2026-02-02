@@ -28,6 +28,7 @@ AVG_CHARGING_TIME = 0.5  # 平均充電時間（時間）- 終了時待ち台数
 # ベースライン旅行時間（時）（設計意図: 毎回計算せず固定値化）
 BASELINE_TRIP_TIME = 6068.83  # 24時間運用時の値
 BASELINE_TRIP_TIME = 6073.559 # 26時間運用時の値
+BASELINE_TRIP_TIME = 7700 # 28時間運用時の値
 
 def evaluation_total_costs(result_file: str) -> Tuple[float, dict]:
     """年間の総コストを計算
@@ -79,7 +80,7 @@ def evaluation_total_costs(result_file: str) -> Tuple[float, dict]:
         (uncharged_penalty / ((1 + DISCOUNT_RATE) ** i)) for i in range(1, YEAR + 1)
     )
 
-    total_costs = (initial_costs + running_costs_discounted + 
+    total_costs = (initial_costs + running_costs_discounted +
                    additional_costs_discounted + waiting_penalty_discounted +
                    uncharged_penalty_discounted)
 
@@ -123,7 +124,7 @@ def calc_running_costs(cs_config: dict, timeseries_kw: pd.DataFrame) -> float:
     ports_array = np.array(cs_config['ports'])
     capacity_array = np.array(cs_config['cap_kw'])
     max_capacity = ports_array * capacity_array
-    daily_kwh = timeseries_kw.sum(axis=0) /60  # 各CSの日kWh使用量
+    daily_kwh = timeseries_kw.sum(axis=0) /60 # 各CSのシミュレーション期間中のkWh使用量（kW·分 → kWh）
 
     # 各種ランニングコスト
     maintainance_costs = np.array([MAINTENANCE_COST_PER_YEAR] * len(ports_array))
@@ -172,95 +173,95 @@ def calc_diff_trnsprt_costs(vehicle_trip: pd.DataFrame) -> Tuple[float, float]:
 
 def calc_ending_waiting_penalty(waiting_line: pd.DataFrame) -> float:
     """終了時の待ち台数を時間換算してペナルティ計算
-    
+
     設計意図:
     - シミュレーション終了時点で待ち行列に残った車両に対するペナルティ
     - 待ち台数 × 平均充電時間 × 時間価値（2倍）で算出
     - 充電機会損失 + 顧客満足度低下を反映
-    
+
     Args:
         waiting_line: 時系列の待ち台数DataFrame (index=ElapsedTime, columns=CSID)
-    
+
     Returns:
         年間ペナルティ（万円）
     """
     if waiting_line is None or waiting_line.empty:
         return 0.0
-    
+
     # 最終時刻の待ち台数を取得
     final_waiting = waiting_line.iloc[-1].sum()
-    
+
     # 待ち時間換算: 待ち台数 × 平均充電時間
     estimated_wait_hours = final_waiting * AVG_CHARGING_TIME
-    
+
     # 時間価値で換算（待ち時間は2倍）
     penalty_daily = estimated_wait_hours * 2 * TIME_VALUE_OF_MONEY
     penalty_yearly = penalty_daily * 365
-    
+
     if final_waiting > 0:
         print(f"終了時待ち台数: {final_waiting:.0f} 台")
         print(f"推定待ち時間: {estimated_wait_hours:.1f} 時間")
         print(f"待ち台数ペナルティ: {penalty_yearly:.1f} 万円/年")
-    
+
     return penalty_yearly
 
 
 def calc_uncharged_penalty(vehicle_trip: pd.DataFrame) -> float:
     """充電すべきなのに充電していない車両のペナルティ計算
-    
+
     設計意図:
     - 待ち行列ペナルティと同様の時間換算ロジック
     - 充電機会損失 + 顧客満足度低下を反映
     - InitialSOC≤20%の車両が充電していない場合にペナルティ
-    
+
     Args:
         vehicle_trip: 車両トリップデータ（InitialSOCカラムを含む）
-    
+
     Returns:
         年間ペナルティ（万円）
     """
     if vehicle_trip is None or vehicle_trip.empty:
         return 0.0
-    
+
     # InitialSOC列が存在しない場合は0を返す
     if 'InitialSOC' not in vehicle_trip.columns:
         print("Warning: InitialSOC列が見つかりません。未充電ペナルティは0です。")
         return 0.0
-    
+
     # 1. InitialSOC≤20%の車両を特定
     SOC_THRESHOLD = 0.20
     target_vehicles = vehicle_trip[
-        (vehicle_trip['InitialSOC'] <= SOC_THRESHOLD) & 
+        (vehicle_trip['InitialSOC'] <= SOC_THRESHOLD) &
         (vehicle_trip['InitialSOC'] >= 0)
     ]
     target_count = len(target_vehicles)
-    
+
     if target_count == 0:
         return 0.0
-    
+
     # 2. うち充電していない車両を抽出
     uncharged = target_vehicles[
-        (target_vehicles['startChargingTime'] == 0) | 
+        (target_vehicles['startChargingTime'] == 0) |
         (target_vehicles['startChargingTime'].isna())
     ]
     uncharged_count = len(uncharged)
-    
+
     if uncharged_count == 0:
         print(f"充電対象車両: {target_count} 台")
         print(f"未充電車両: 0 台 (充電率100%)")
         return 0.0
-    
+
     # 3. ペナルティ計算
     # 未充電車両 × 平均充電時間 × 時間価値 × 2倍（顧客不満）
     estimated_loss_hours = uncharged_count * AVG_CHARGING_TIME
     penalty_daily = estimated_loss_hours * 2 * TIME_VALUE_OF_MONEY
     penalty_yearly = penalty_daily * 365
-    
+
     print(f"充電対象車両（InitialSOC≤{SOC_THRESHOLD*100:.0f}%）: {target_count} 台")
     print(f"未充電車両: {uncharged_count} 台 ({uncharged_count/target_count*100:.1f}%)")
     print(f"推定損失時間: {estimated_loss_hours:.1f} 時間")
     print(f"未充電ペナルティ: {penalty_yearly:.1f} 万円/年")
-    
+
     return penalty_yearly
 
 

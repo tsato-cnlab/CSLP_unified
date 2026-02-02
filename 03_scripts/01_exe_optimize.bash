@@ -28,7 +28,7 @@ for weight in ${WEIGHTS[@]}; do
 
     # set -eを一時的に無効化してエラーをキャッチ
     set +e
-    uv run --active 03_scripts/run_multiple_weights.py --base-config $CONFIG_NAME --weights $weight --skip-existing
+    uv run --active 03_scripts/run_multiple_weights.py --base-config $CONFIG_NAME --weights $weight
     EXIT_CODE=$?
     set -e
 
